@@ -183,7 +183,10 @@ final class DownloadManager: ObservableObject {
             var failed = 0
             while !cancelRequested, let job = jobs.first(where: { $0.state == .waiting }) {
                 await download(job)
-                if job.state == .done { finished += job.outputs }
+                if job.state == .done {
+                    finished += job.outputs
+                    handOff(job)
+                }
                 if case .failed = job.state { failed += 1 }
             }
             isRunning = false
@@ -192,14 +195,16 @@ final class DownloadManager: ObservableObject {
                 sleepActivity = nil
             }
 
-            if !finished.isEmpty {
-                if s.playSoundWhenDone { NSSound(named: NSSound.Name(s.soundName))?.play() }
-                if s.revealWhenDone { NSWorkspace.shared.activateFileViewerSelecting(finished) }
-            }
-            if s.notifyWhenDone, !NSApp.isActive, !(finished.isEmpty && failed == 0) {
-                var body = "\(finished.count) file\(finished.count == 1 ? "" : "s") downloaded"
-                if failed > 0 { body += ", \(failed) failed" }
-                Notifier.post(title: "ClipShift", body: body)
+            if !s.downloadThenConvert {
+                if !finished.isEmpty {
+                    if s.playSoundWhenDone { NSSound(named: NSSound.Name(s.soundName))?.play() }
+                    if s.revealWhenDone { NSWorkspace.shared.activateFileViewerSelecting(finished) }
+                }
+                if s.notifyWhenDone, !NSApp.isActive, !(finished.isEmpty && failed == 0) {
+                    var body = "\(finished.count) file\(finished.count == 1 ? "" : "s") downloaded"
+                    if failed > 0 { body += ", \(failed) failed" }
+                    Notifier.post(title: "ClipShift", body: body)
+                }
             }
         }
     }
@@ -301,6 +306,24 @@ final class DownloadManager: ObservableObject {
             job.stage = name
             job.markCurrentTrackProcessing(name)
         }
+    }
+
+    /// Stops one link. A running link ends as Cancelled and the queue moves on to the next.
+    func cancel(_ job: DownloadJob) {
+        switch job.state {
+        case .waiting: job.state = .cancelled
+        case .downloading, .processing: job.runner.cancel()
+        default: break
+        }
+    }
+
+    /// With "convert after download" on, finished files go straight to the convert list.
+    private func handOff(_ job: DownloadJob) {
+        let s = Settings.shared
+        guard s.downloadThenConvert, !job.outputs.isEmpty else { return }
+        let cm = ConversionManager.shared
+        cm.addDownloaded(job.outputs, deleteOriginal: s.deleteOriginalAfterConvert)
+        cm.start(format: cm.selectedFormat, quality: cm.selectedQuality, retryFailed: false)
     }
 
     private static func errorSummary(_ text: String, fallback: String) -> String {

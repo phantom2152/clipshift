@@ -111,20 +111,27 @@ struct ContentView: View {
                     .disabled(!downloads.jobs.contains { !$0.state.isBusy })
             }
             List(downloads.jobs) { job in
-                DownloadRow(job: job) { downloads.retry(job) }
-                    .contextMenu {
-                        if !job.state.isBusy {
-                            Button("Remove") { downloads.remove(job) }
-                        }
-                        if job.state.canRetry {
-                            Button("Retry") { downloads.retry(job) }
-                        }
-                        if !job.outputs.isEmpty {
-                            Button("Show in Finder") {
-                                NSWorkspace.shared.activateFileViewerSelecting(job.outputs)
-                            }
+                DownloadRow(
+                    job: job,
+                    onRetry: { downloads.retry(job) },
+                    onCancel: { downloads.cancel(job) }
+                )
+                .contextMenu {
+                    if job.state.isBusy || job.state == .waiting {
+                        Button("Cancel") { downloads.cancel(job) }
+                    }
+                    if !job.state.isBusy {
+                        Button("Remove") { downloads.remove(job) }
+                    }
+                    if job.state.canRetry {
+                        Button("Retry") { downloads.retry(job) }
+                    }
+                    if !job.outputs.isEmpty {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting(job.outputs)
                         }
                     }
+                }
             }
             .listStyle(.inset)
             .frame(maxHeight: manager.jobs.isEmpty ? .infinity : 190)
@@ -417,8 +424,12 @@ struct JobRow: View {
 
 @MainActor
 final class ContentViewModel: ObservableObject {
-    @Published var format: OutputFormat
-    @Published var quality: Quality
+    @Published var format: OutputFormat {
+        didSet { ConversionManager.shared.selectedFormat = format }
+    }
+    @Published var quality: Quality {
+        didSet { ConversionManager.shared.selectedQuality = quality }
+    }
     @Published var dropTargeted = false
     @Published var urlText = ""
     @Published var selection = Set<UUID>()
@@ -430,6 +441,8 @@ final class ContentViewModel: ObservableObject {
         let s = Settings.shared
         format = s.rememberLastUsed ? (s.lastFormat ?? s.defaultFormat) : s.defaultFormat
         quality = s.rememberLastUsed ? (s.lastQuality ?? s.defaultQuality) : s.defaultQuality
+        ConversionManager.shared.selectedFormat = format
+        ConversionManager.shared.selectedQuality = quality
 
         Settings.shared.$defaultFormat
             .dropFirst()

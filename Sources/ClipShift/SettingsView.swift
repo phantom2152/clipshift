@@ -528,6 +528,18 @@ private struct DownloadsTab: View {
                 )
             }
 
+            Section("After downloading") {
+                Toggle("Convert with ClipShift after each download", isOn: $s.downloadThenConvert)
+                Toggle(
+                    "Move the downloaded original to the Trash after converting",
+                    isOn: $s.deleteOriginalAfterConvert
+                )
+                .disabled(!s.downloadThenConvert)
+                Hint(
+                    "Uses the Format and Quality chosen in the main window, plus your Video/Audio and Output settings. If the output folder is \"same as source\", converted files stay next to the download, including inside playlist folders."
+                )
+            }
+
             Section("Extras") {
                 Toggle(
                     "Embed metadata (title, artist, album, year…)", isOn: $s.downloadEmbedMetadata)

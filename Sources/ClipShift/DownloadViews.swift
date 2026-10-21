@@ -3,6 +3,7 @@ import SwiftUI
 struct DownloadRow: View {
     @ObservedObject var job: DownloadJob
     let onRetry: () -> Void
+    let onCancel: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -16,6 +17,9 @@ struct DownloadRow: View {
 
                 if let pct = percentText {
                     Text(pct).monospacedDigit().foregroundStyle(.secondary)
+                }
+                if job.state.isBusy || job.state == .waiting {
+                    Button("Cancel", action: onCancel)
                 }
                 if job.state.canRetry {
                     Button("Retry", action: onRetry)

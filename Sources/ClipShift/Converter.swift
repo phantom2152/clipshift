@@ -168,6 +168,7 @@ final class Job: ObservableObject, Identifiable {
     let id = UUID()
     let input: URL
     var runner = FFmpegRunner()
+    var deleteInputOnSuccess = false
     @Published var state: State = .waiting
     @Published var progress: Double = 0
     @Published var indeterminate = false
@@ -191,6 +192,9 @@ final class ConversionManager: ObservableObject {
     @Published var jobs: [Job] = []
     @Published var isRunning = false
     private var cancelRequested = false
+    /// Kept in sync with the main window's pickers, so downloads can convert with the same choice.
+    var selectedFormat: OutputFormat = Settings.shared.defaultFormat
+    var selectedQuality: Quality = Settings.shared.defaultQuality
     private var sleepActivity: NSObjectProtocol?
     private var batchDone = 0
 
@@ -200,6 +204,15 @@ final class ConversionManager: ObservableObject {
             case .waiting, .failed, .cancelled: return true
             default: return false
             }
+        }
+    }
+
+    /// Adds finished downloads without the file-type filter or alerts.
+    func addDownloaded(_ urls: [URL], deleteOriginal: Bool) {
+        for url in urls where !jobs.contains(where: { $0.input.path == url.path }) {
+            let job = Job(input: url)
+            job.deleteInputOnSuccess = deleteOriginal
+            jobs.append(job)
         }
     }
 
@@ -267,11 +280,13 @@ final class ConversionManager: ObservableObject {
         for job in jobs where job.state == .running { job.runner.cancel() }
     }
 
-    func start(format: OutputFormat, quality: Quality) {
+    func start(format: OutputFormat, quality: Quality, retryFailed: Bool = true) {
         guard !isRunning else { return }
-        for job in jobs {
-            if case .failed = job.state { job.state = .waiting }
-            if job.state == .cancelled { job.state = .waiting }
+        if retryFailed {
+            for job in jobs {
+                if case .failed = job.state { job.state = .waiting }
+                if job.state == .cancelled { job.state = .waiting }
+            }
         }
         isRunning = true
         cancelRequested = false
@@ -386,6 +401,10 @@ final class ConversionManager: ObservableObject {
             job.outputSize = (try? out.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(
                 Int64.init)
             job.state = .done
+            if job.deleteInputOnSuccess, out.standardizedFileURL != job.input.standardizedFileURL {
+                try? FileManager.default.trashItem(at: job.input, resultingItemURL: nil)
+                Log.write("TRASHED original \(job.input.path)")
+            }
         } else {
             try? FileManager.default.removeItem(at: out)
             let lines = result.errorText

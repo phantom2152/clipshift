@@ -81,6 +81,8 @@ enum Factory {
     /// Becomes "Playlist Name/" for playlists and nothing for single videos.
     static let downloadPlaylistPrefix = "%(playlist_title)s/"
     static let downloadExtraArgs = ""
+    static let downloadThenConvert = false
+    static let deleteOriginalAfterConvert = true
 
     // Input
     static let maxFolderFiles = 500
@@ -235,6 +237,13 @@ final class Settings: ObservableObject {
         didSet { Self.put(downloadExtraArgs, "downloadExtraArgs") }
     }
 
+    @Published var downloadThenConvert: Bool {
+        didSet { Self.put(downloadThenConvert, "downloadThenConvert") }
+    }
+    @Published var deleteOriginalAfterConvert: Bool {
+        didSet { Self.put(deleteOriginalAfterConvert, "deleteOriginalAfterConvert") }
+    }
+
     // MARK: Advanced
     @Published var logEnabled: Bool { didSet { Self.put(logEnabled, "logEnabled") } }
     @Published var logMaxMB: Int { didSet { Self.put(logMaxMB, "logMaxMB") } }
@@ -339,6 +348,9 @@ final class Settings: ObservableObject {
         downloadPlaylistPrefix = Self.string(
             "downloadPlaylistPrefix", Factory.downloadPlaylistPrefix)
         downloadExtraArgs = Self.string("downloadExtraArgs", Factory.downloadExtraArgs)
+        downloadThenConvert = Self.bool("downloadThenConvert", Factory.downloadThenConvert)
+        deleteOriginalAfterConvert = Self.bool(
+            "deleteOriginalAfterConvert", Factory.deleteOriginalAfterConvert)
 
         logEnabled = Self.bool("logEnabled", Factory.logEnabled)
         logMaxMB = Self.int("logMaxMB", Factory.logMaxMB)
@@ -415,6 +427,8 @@ final class Settings: ObservableObject {
         downloadGroupPlaylists = Factory.downloadGroupPlaylists
         downloadPlaylistPrefix = Factory.downloadPlaylistPrefix
         downloadExtraArgs = Factory.downloadExtraArgs
+        downloadThenConvert = Factory.downloadThenConvert
+        deleteOriginalAfterConvert = Factory.deleteOriginalAfterConvert
     }
 
     func resetAdvanced() {
