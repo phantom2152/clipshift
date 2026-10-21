@@ -24,6 +24,7 @@ enum Factory {
     // General
     static let defaultFormat = OutputFormat.mp4
     static let defaultQuality = Quality.medium
+    static let rememberLastUsed = true
     static let revealWhenDone = false
     static let playSoundWhenDone = true
     static let soundName = "Glass"
@@ -85,6 +86,22 @@ final class Settings: ObservableObject {
     @Published var defaultQuality: Quality {
         didSet { Self.put(defaultQuality.rawValue, "defaultQuality") }
     }
+
+    @Published var rememberLastUsed: Bool {
+        didSet { Self.put(rememberLastUsed, "rememberLastUsed") }
+    }
+
+    var lastFormat: OutputFormat? {
+        OutputFormat(rawValue: UserDefaults.standard.string(forKey: "lastFormat") ?? "")
+    }
+    var lastQuality: Quality? {
+        Quality(rawValue: UserDefaults.standard.string(forKey: "lastQuality") ?? "")
+    }
+    func saveLast(format: OutputFormat, quality: Quality) {
+        Self.put(format.rawValue, "lastFormat")
+        Self.put(quality.rawValue, "lastQuality")
+    }
+
     @Published var revealWhenDone: Bool { didSet { Self.put(revealWhenDone, "revealWhenDone") } }
     @Published var playSoundWhenDone: Bool {
         didSet { Self.put(playSoundWhenDone, "playSoundWhenDone") }
@@ -184,6 +201,7 @@ final class Settings: ObservableObject {
             OutputFormat(rawValue: d.string(forKey: "defaultFormat") ?? "") ?? Factory.defaultFormat
         defaultQuality =
             Quality(rawValue: d.string(forKey: "defaultQuality") ?? "") ?? Factory.defaultQuality
+        rememberLastUsed = Self.bool("rememberLastUsed", Factory.rememberLastUsed)
         revealWhenDone = Self.bool("revealWhenDone", Factory.revealWhenDone)
         playSoundWhenDone = Self.bool("playSoundWhenDone", Factory.playSoundWhenDone)
         soundName = Self.string("soundName", Factory.soundName)
@@ -242,6 +260,7 @@ final class Settings: ObservableObject {
         notifyWhenDone = Factory.notifyWhenDone
         showSpeedETA = Factory.showSpeedETA
         showSizeChange = Factory.showSizeChange
+        rememberLastUsed = Factory.rememberLastUsed
     }
 
     func resetOutput() {

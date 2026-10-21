@@ -104,8 +104,9 @@ private struct GeneralTab: View {
                 Picker("Quality", selection: $s.defaultQuality) {
                     ForEach(Quality.allCases) { Text($0.label).tag($0) }
                 }
+                Toggle("Remember the last used format and quality", isOn: $s.rememberLastUsed)
                 Hint(
-                    "Applied to the main window when you change them here. You can still override them there."
+                    "When on, the main window starts with what you last converted with. The defaults above are used on first launch, or when this is off."
                 )
             }
 

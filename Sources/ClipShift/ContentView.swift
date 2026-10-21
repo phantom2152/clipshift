@@ -353,8 +353,8 @@ struct JobRow: View {
 
 @MainActor
 final class ContentViewModel: ObservableObject {
-    @Published var format = Settings.shared.defaultFormat
-    @Published var quality = Settings.shared.defaultQuality
+    @Published var format: OutputFormat
+    @Published var quality: Quality
     @Published var dropTargeted = false
     @Published var selection = Set<UUID>()
     @Published var showClearAllConfirm = false
@@ -362,6 +362,10 @@ final class ContentViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        let s = Settings.shared
+        format = s.rememberLastUsed ? (s.lastFormat ?? s.defaultFormat) : s.defaultFormat
+        quality = s.rememberLastUsed ? (s.lastQuality ?? s.defaultQuality) : s.defaultQuality
+
         Settings.shared.$defaultFormat
             .dropFirst()
             .sink { [weak self] in self?.format = $0 }

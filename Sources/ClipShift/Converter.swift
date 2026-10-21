@@ -278,6 +278,7 @@ final class ConversionManager: ObservableObject {
         batchDone = 0
 
         let s = Settings.shared
+        if s.rememberLastUsed { s.saveLast(format: format, quality: quality) }
         if s.preventSleep {
             sleepActivity = ProcessInfo.processInfo.beginActivity(
                 options: [.userInitiated, .idleSystemSleepDisabled], reason: "Converting media")
