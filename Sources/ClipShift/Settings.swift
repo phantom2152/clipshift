@@ -28,6 +28,11 @@ enum Factory {
     static let playSoundWhenDone = true
     static let soundName = "Glass"
     static let quitWhenLastWindowCloses = false
+    static let preventSleep = true
+    static let showDockProgress = true
+    static let notifyWhenDone = true
+    static let showSpeedETA = true
+    static let showSizeChange = true
     static let clearAllConfirmThreshold = 5
 
     // Output
@@ -47,6 +52,9 @@ enum Factory {
     static let opusBitrate = 128
     static let gifWidth = PerQuality<Int>(high: 960, medium: 640, small: 480)
     static let gifFPS = PerQuality<Int>(high: 15, medium: 12, small: 10)
+    static let h264Hardware = false
+    static let h264HWQuality = PerQuality<Int>(high: 65, medium: 50, small: 35)
+    static let hardwareDecode = false
 
     // Audio
     static let mp3Quality = PerQuality<Int>(high: 0, medium: 2, small: 5)
@@ -89,6 +97,14 @@ final class Settings: ObservableObject {
         didSet { Self.put(clearAllConfirmThreshold, "clearAllConfirmThreshold") }
     }
 
+    @Published var preventSleep: Bool { didSet { Self.put(preventSleep, "preventSleep") } }
+    @Published var showDockProgress: Bool {
+        didSet { Self.put(showDockProgress, "showDockProgress") }
+    }
+    @Published var notifyWhenDone: Bool { didSet { Self.put(notifyWhenDone, "notifyWhenDone") } }
+    @Published var showSpeedETA: Bool { didSet { Self.put(showSpeedETA, "showSpeedETA") } }
+    @Published var showSizeChange: Bool { didSet { Self.put(showSizeChange, "showSizeChange") } }
+
     // MARK: Output
     /// Empty string = save next to the source file.
     @Published var outputFolderPath: String {
@@ -110,6 +126,11 @@ final class Settings: ObservableObject {
     @Published var hevcQuality: PerQuality<Int> {
         didSet { Self.putJSON(hevcQuality, "hevcQuality") }
     }
+    @Published var h264Hardware: Bool { didSet { Self.put(h264Hardware, "h264Hardware") } }
+    @Published var h264HWQuality: PerQuality<Int> {
+        didSet { Self.putJSON(h264HWQuality, "h264HWQuality") }
+    }
+    @Published var hardwareDecode: Bool { didSet { Self.put(hardwareDecode, "hardwareDecode") } }
     @Published var vp9CRF: PerQuality<Int> { didSet { Self.putJSON(vp9CRF, "vp9CRF") } }
     @Published var vp9CPUUsed: Int { didSet { Self.put(vp9CPUUsed, "vp9CPUUsed") } }
     @Published var videoAACBitrate: Int { didSet { Self.put(videoAACBitrate, "videoAACBitrate") } }
@@ -171,6 +192,12 @@ final class Settings: ObservableObject {
         clearAllConfirmThreshold = Self.int(
             "clearAllConfirmThreshold", Factory.clearAllConfirmThreshold)
 
+        preventSleep = Self.bool("preventSleep", Factory.preventSleep)
+        showDockProgress = Self.bool("showDockProgress", Factory.showDockProgress)
+        notifyWhenDone = Self.bool("notifyWhenDone", Factory.notifyWhenDone)
+        showSpeedETA = Self.bool("showSpeedETA", Factory.showSpeedETA)
+        showSizeChange = Self.bool("showSizeChange", Factory.showSizeChange)
+
         outputFolderPath = Self.string("outputFolderPath", Factory.outputFolderPath)
         overwriteExisting = Self.bool("overwriteExisting", Factory.overwriteExisting)
         convertedSuffix = Self.string("convertedSuffix", Factory.convertedSuffix)
@@ -179,6 +206,9 @@ final class Settings: ObservableObject {
         x264Preset = Self.string("x264Preset", Factory.x264Preset)
         crf = Self.json("crf", Factory.crf)
         hevcQuality = Self.json("hevcQuality", Factory.hevcQuality)
+        h264Hardware = Self.bool("h264Hardware", Factory.h264Hardware)
+        h264HWQuality = Self.json("h264HWQuality", Factory.h264HWQuality)
+        hardwareDecode = Self.bool("hardwareDecode", Factory.hardwareDecode)
         vp9CRF = Self.json("vp9CRF", Factory.vp9CRF)
         vp9CPUUsed = Self.int("vp9CPUUsed", Factory.vp9CPUUsed)
         videoAACBitrate = Self.int("videoAACBitrate", Factory.videoAACBitrate)
@@ -207,6 +237,11 @@ final class Settings: ObservableObject {
         soundName = Factory.soundName
         quitWhenLastWindowCloses = Factory.quitWhenLastWindowCloses
         clearAllConfirmThreshold = Factory.clearAllConfirmThreshold
+        preventSleep = Factory.preventSleep
+        showDockProgress = Factory.showDockProgress
+        notifyWhenDone = Factory.notifyWhenDone
+        showSpeedETA = Factory.showSpeedETA
+        showSizeChange = Factory.showSizeChange
     }
 
     func resetOutput() {
@@ -220,6 +255,9 @@ final class Settings: ObservableObject {
         x264Preset = Factory.x264Preset
         crf = Factory.crf
         hevcQuality = Factory.hevcQuality
+        h264Hardware = Factory.h264Hardware
+        h264HWQuality = Factory.h264HWQuality
+        hardwareDecode = Factory.hardwareDecode
         vp9CRF = Factory.vp9CRF
         vp9CPUUsed = Factory.vp9CPUUsed
         videoAACBitrate = Factory.videoAACBitrate

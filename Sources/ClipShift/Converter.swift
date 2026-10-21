@@ -57,6 +57,7 @@ final class FFmpegRunner: @unchecked Sendable {
     /// `onProgress` receives the encoded position in seconds.
     func run(
         ffmpeg: String, args: [String],
+        onSpeed: @escaping @Sendable (Double) -> Void,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async -> FFmpegResult {
         await withCheckedContinuation { (cont: CheckedContinuation<FFmpegResult, Never>) in
@@ -76,9 +77,15 @@ final class FFmpegRunner: @unchecked Sendable {
                     h.readabilityHandler = nil
                     return
                 }
-                for line in splitter.feed(d) where line.hasPrefix("out_time_us=") {
-                    if let us = Double(line.dropFirst("out_time_us=".count)) {
-                        onProgress(us / 1_000_000)
+                for line in splitter.feed(d) {
+                    if line.hasPrefix("out_time_us=") {
+                        if let us = Double(line.dropFirst("out_time_us=".count)) {
+                            onProgress(us / 1_000_000)
+                        }
+                    } else if line.hasPrefix("speed=") {
+                        let v = line.dropFirst("speed=".count).trimmingCharacters(
+                            in: CharacterSet(charactersIn: "x "))
+                        if let sp = Double(v), sp > 0 { onSpeed(sp) }
                     }
                 }
             }
@@ -165,6 +172,9 @@ final class Job: ObservableObject, Identifiable {
     @Published var progress: Double = 0
     @Published var indeterminate = false
     @Published var output: URL?
+    var duration: Double = 0
+    @Published var speed: Double?
+    @Published var outputSize: Int64?
     let fileSize: Int64?
 
     init(input: URL) {
@@ -181,6 +191,8 @@ final class ConversionManager: ObservableObject {
     @Published var jobs: [Job] = []
     @Published var isRunning = false
     private var cancelRequested = false
+    private var sleepActivity: NSObjectProtocol?
+    private var batchDone = 0
 
     var hasPending: Bool {
         jobs.contains { job in
@@ -263,19 +275,42 @@ final class ConversionManager: ObservableObject {
         }
         isRunning = true
         cancelRequested = false
+        batchDone = 0
+
+        let s = Settings.shared
+        if s.preventSleep {
+            sleepActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled], reason: "Converting media")
+        }
+        if s.notifyWhenDone { Notifier.requestAuthorization() }
 
         Task {
             var finished: [URL] = []
+            var failed = 0
             while !cancelRequested, let job = jobs.first(where: { $0.state == .waiting }) {
                 await convert(job, format: format, quality: quality)
-                if job.state == .done, let out = job.output { finished.append(out) }
+                if job.state == .done, let out = job.output {
+                    finished.append(out)
+                    batchDone += 1
+                }
+                if case .failed = job.state { failed += 1 }
+                updateDock()
             }
             isRunning = false
+            if let a = sleepActivity {
+                ProcessInfo.processInfo.endActivity(a)
+                sleepActivity = nil
+            }
+            NSApp.dockTile.badgeLabel = nil
 
-            let s = Settings.shared
             if !finished.isEmpty {
                 if s.playSoundWhenDone { NSSound(named: NSSound.Name(s.soundName))?.play() }
                 if s.revealWhenDone { NSWorkspace.shared.activateFileViewerSelecting(finished) }
+            }
+            if s.notifyWhenDone, !NSApp.isActive, !(finished.isEmpty && failed == 0) {
+                var body = "\(finished.count) converted"
+                if failed > 0 { body += ", \(failed) failed" }
+                Notifier.post(title: "ClipShift", body: body)
             }
         }
     }
@@ -309,21 +344,34 @@ final class ConversionManager: ObservableObject {
             return
         }
 
+        let hwIn = s.hardwareDecode ? ["-hwaccel", "videotoolbox"] : []
         let args =
-            [
-                "-hide_banner", "-nostdin", "-loglevel", "error", "-y",
-                "-i", job.input.path, "-progress", "pipe:1", "-nostats",
-            ]
+            ["-hide_banner", "-nostdin", "-loglevel", "error", "-y"] + hwIn
+            + ["-i", job.input.path, "-progress", "pipe:1", "-nostats"]
             + format.arguments(quality: quality) + [out.path]
 
         Log.write(
             "START \(job.input.lastPathComponent)\n  \(ffmpeg) \(args.joined(separator: " "))")
 
         let total = duration ?? 0
-        let result = await runner.run(ffmpeg: ffmpeg, args: args) { [weak job] seconds in
-            guard total > 0 else { return }
-            Task { @MainActor in job?.progress = min(seconds / total, 0.99) }
-        }
+        job.duration = total
+        job.speed = nil
+        let result = await runner.run(
+            ffmpeg: ffmpeg, args: args,
+            onSpeed: { [weak job] sp in
+                Task { @MainActor in
+                    guard let job else { return }
+                    // Smooth it, since ffmpeg's reported speed jitters.
+                    job.speed = job.speed.map { $0 * 0.7 + sp * 0.3 } ?? sp
+                }
+            },
+            onProgress: { [weak job, weak self] seconds in
+                guard total > 0 else { return }
+                Task { @MainActor in
+                    job?.progress = min(seconds / total, 0.99)
+                    self?.updateDock()
+                }
+            })
         Log.write(
             "END \(job.input.lastPathComponent) status=\(result.status) cancelled=\(result.wasCancelled)"
                 + (result.errorText.isEmpty ? "" : "\n\(result.errorText)"))
@@ -334,6 +382,8 @@ final class ConversionManager: ObservableObject {
         } else if result.status == 0 {
             job.progress = 1
             job.output = out
+            job.outputSize = (try? out.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(
+                Int64.init)
             job.state = .done
         } else {
             try? FileManager.default.removeItem(at: out)
@@ -343,6 +393,19 @@ final class ConversionManager: ObservableObject {
                 .joined(separator: "\n")
             job.state = .failed(lines.isEmpty ? "ffmpeg exited with code \(result.status)." : lines)
         }
+    }
+
+    func updateDock() {
+        guard Settings.shared.showDockProgress, isRunning else {
+            NSApp.dockTile.badgeLabel = nil
+            return
+        }
+        let running = jobs.first { $0.state == .running }
+        let waiting = jobs.filter { $0.state == .waiting }.count
+        let total = batchDone + (running == nil ? 0 : 1) + waiting
+        guard total > 0 else { return }
+        let value = (Double(batchDone) + (running?.progress ?? 0)) / Double(total)
+        NSApp.dockTile.badgeLabel = "\(Int(value * 100))%"
     }
 
     static func outputURL(for input: URL, format: OutputFormat, folder: URL?, overwrite: Bool)

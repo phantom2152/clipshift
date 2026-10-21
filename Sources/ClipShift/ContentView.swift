@@ -215,6 +215,7 @@ struct ContentView: View {
 
 struct JobRow: View {
     @ObservedObject var job: Job
+    @ObservedObject private var settings = Settings.shared
 
     var body: some View {
         HStack(spacing: 12) {
@@ -232,6 +233,12 @@ struct JobRow: View {
                         ProgressView().progressViewStyle(.linear)
                     } else {
                         ProgressView(value: job.progress)
+                    }
+                    if settings.showSpeedETA, let detail = runningDetail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                 } else {
                     Text(statusText)
@@ -306,10 +313,41 @@ struct JobRow: View {
         switch job.state {
         case .waiting: return sourceInfo
         case .running: return ""
-        case .done: return "Done → \(job.output?.lastPathComponent ?? "")"
+        case .done:
+            var text = "Done → \(job.output?.lastPathComponent ?? "")"
+            if settings.showSizeChange, let a = job.fileSize, let b = job.outputSize {
+                text += "\n" + sizeChange(a, b)
+            }
+            return text
         case .failed(let msg): return msg
         case .cancelled: return "Cancelled · \(sourceInfo)"
         }
+    }
+
+    private var runningDetail: String? {
+        guard let sp = job.speed, job.duration > 0 else { return nil }
+        let remaining = max(0, job.duration * (1 - job.progress)) / sp
+        return "\(String(format: "%.1f", sp))× · \(Self.clock(remaining)) left"
+    }
+
+    private static func clock(_ secs: Double) -> String {
+        let t = Int(secs.rounded())
+        let h = t / 3600
+        let m = (t % 3600) / 60
+        let s = t % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+
+    private func sizeChange(_ a: Int64, _ b: Int64) -> String {
+        func f(_ n: Int64) -> String {
+            ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
+        }
+        var text = "\(f(a)) → \(f(b))"
+        if a > 0 {
+            let pct = Int((Double(b - a) / Double(a) * 100).rounded())
+            text += pct < 0 ? " (−\(abs(pct))%)" : pct > 0 ? " (+\(pct)%)" : " (same size)"
+        }
+        return text
     }
 }
 

@@ -66,7 +66,13 @@ enum OutputFormat: String, CaseIterable, Identifiable {
             let aac = "\(clamp(s.videoAACBitrate, 32, 640))k"
             var a = maps
             a += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
-            a += ["-c:v", "libx264", "-preset", s.x264Preset, "-crf", crf]
+            if s.h264Hardware {
+                a += [
+                    "-c:v", "h264_videotoolbox", "-q:v", String(clamp(s.h264HWQuality[q], 1, 100)),
+                ]
+            } else {
+                a += ["-c:v", "libx264", "-preset", s.x264Preset, "-crf", crf]
+            }
             a += ["-pix_fmt", "yuv420p"]
             a += ["-c:a", "aac", "-b:a", aac]
             if self != .mkv { a += ["-movflags", "+faststart"] }

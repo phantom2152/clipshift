@@ -119,16 +119,26 @@ private struct GeneralTab: View {
                     Button("Preview") { NSSound(named: NSSound.Name(s.soundName))?.play() }
                 }
                 .disabled(!s.playSoundWhenDone)
+                Toggle(
+                    "Send a notification when ClipShift is in the background",
+                    isOn: $s.notifyWhenDone)
             }
 
             Section("Window") {
                 Toggle("Quit when the last window closes", isOn: $s.quitWhenLastWindowCloses)
             }
 
+            Section("While converting") {
+                Toggle("Keep the Mac awake", isOn: $s.preventSleep)
+                Toggle("Show progress on the Dock icon", isOn: $s.showDockProgress)
+                Toggle("Show speed and time left on rows", isOn: $s.showSpeedETA)
+            }
+
             Section("File list") {
                 Stepper(value: $s.clearAllConfirmThreshold, in: 0...10_000) {
                     Text("Confirm Clear All above \(s.clearAllConfirmThreshold) files")
                 }
+                Toggle("Show before/after file size on finished rows", isOn: $s.showSizeChange)
                 Hint("Set to 0 to always ask.")
             }
 
@@ -195,6 +205,18 @@ private struct VideoTab: View {
 
     var body: some View {
         Form {
+            Section("Hardware acceleration") {
+                Toggle(
+                    "Use the Mac's hardware encoder for H.264 (MP4, MOV, MKV)",
+                    isOn: $s.h264Hardware)
+                TripleRow(title: "Hardware quality", value: $s.h264HWQuality)
+                    .disabled(!s.h264Hardware)
+                Toggle("Use hardware decoding of the source", isOn: $s.hardwareDecode)
+                Hint(
+                    "Hardware encoding is much faster and uses little CPU, but makes larger files than software at similar quality. Doesn't apply to WebM or GIF."
+                )
+            }
+
             Section("H.264 (MP4, MOV, MKV)") {
                 Picker("Speed preset", selection: $s.x264Preset) {
                     ForEach(Self.presets, id: \.self) { Text($0).tag($0) }
