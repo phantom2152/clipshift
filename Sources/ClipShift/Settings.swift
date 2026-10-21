@@ -78,8 +78,8 @@ enum Factory {
     static let downloadEmbedMetadata = true
     static let downloadEmbedCoverArt = true
     static let downloadGroupPlaylists = true
-    /// Becomes "Playlist Name/03 - " for playlists and nothing for single videos.
-    static let downloadPlaylistPrefix = "%(playlist_title)s/%(playlist_index)02d - "
+    /// Becomes "Playlist Name/" for playlists and nothing for single videos.
+    static let downloadPlaylistPrefix = "%(playlist_title)s/"
     static let downloadExtraArgs = ""
 
     // Input

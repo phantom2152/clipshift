@@ -3,7 +3,7 @@ import Foundation
 enum YTDLPEvent: Sendable {
     case download(
         fraction: Double?, speed: Double?, eta: Double?,
-        index: Int?, count: Int?, title: String?)
+        index: Int?, count: Int?, playlist: String?, title: String?)
     case stage(String)
 }
 
@@ -83,11 +83,21 @@ final class YTDLPRunner: @unchecked Sendable {
                 let total = Double(p[2]) ?? Double(p[3])
                 var fraction: Double? = nil
                 if let dl = downloaded, let t = total, t > 0 { fraction = min(max(dl / t, 0), 1) }
-                let title = (p[8] == "NA" || p[8].isEmpty) ? nil : p[8]
+                let names = p[8].split(
+                    separator: "\u{1F}", maxSplits: 1, omittingEmptySubsequences: false
+                )
+                .map(String.init)
+                func clean(_ s: String?) -> String? {
+                    guard let s, !s.isEmpty, s != "NA" else { return nil }
+                    return s
+                }
                 onEvent(
                     .download(
                         fraction: fraction, speed: Double(p[4]), eta: Double(p[5]),
-                        index: Int(p[6]), count: Int(p[7]), title: title))
+                        index: Int(p[6]), count: Int(p[7]),
+                        playlist: clean(names.count > 1 ? names[0] : nil),
+                        title: clean(names.last)))
+
             } else if line.hasPrefix("PP|") {
                 // PP|started|FFmpegExtractAudio
                 let p = line.split(separator: "|", omittingEmptySubsequences: false).map(
@@ -186,7 +196,7 @@ enum YTDLPCommand {
     static let downloadTemplate =
         "download:DL|%(progress.downloaded_bytes)s|%(progress.total_bytes)s"
         + "|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"
-        + "|%(info.playlist_index)s|%(info.n_entries)s|%(info.title)s"
+        + "|%(info.playlist_index)s|%(info.n_entries)s|%(info.playlist_title)s\u{1F}%(info.title)s"
     static let postTemplate =
         "postprocess:PP|%(progress.status)s|%(progress.postprocessor)s"
 

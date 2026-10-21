@@ -30,6 +30,79 @@ final class DownloadJob: ObservableObject, Identifiable {
     @Published var outputs: [URL] = []
     @Published var note: String?
 
+    struct Track: Identifiable, Equatable {
+        enum State: Equatable { case downloading, processing, done, failed, cancelled }
+        let id: Int  // position in the playlist
+        var title: String
+        var state: State = .downloading
+        var progress = 0.0
+        var stage = ""
+        var known = false  // true once yt-dlp has reported a real percentage
+    }
+
+    enum CloseReason { case nextStarted, succeeded, cancelled, failed }
+
+    @Published var playlistTitle: String?
+    @Published var playlistCount: Int?
+    @Published var tracks: [Track] = []
+    @Published var expanded = false
+
+    var isPlaylist: Bool { (playlistCount ?? 0) > 1 }
+    var doneCount: Int { tracks.filter { $0.state == .done }.count }
+
+    /// Whole-playlist progress: finished songs plus the fraction of the current one.
+    var overall: Double {
+        guard let n = playlistCount, n > 0 else { return progress }
+        let current =
+            tracks.last(where: { $0.state == .downloading || $0.state == .processing })?.progress
+            ?? 0
+        return min((Double(doneCount) + current) / Double(n), 1)
+    }
+
+    func updateTrack(index: Int, title: String?, fraction: Double?) {
+        if let i = tracks.firstIndex(where: { $0.id == index }) {
+            if let title { tracks[i].title = title }
+            if tracks[i].state == .downloading, let f = fraction {
+                tracks[i].progress = f
+                tracks[i].known = true
+            }
+        } else {
+            closeOpenTracks(.nextStarted)
+            var t = Track(id: index, title: title ?? "Track \(index)")
+            if let f = fraction {
+                t.progress = f
+                t.known = true
+            }
+            tracks.append(t)
+        }
+    }
+
+    func markCurrentTrackProcessing(_ name: String) {
+        guard let i = tracks.indices.last,
+            tracks[i].state == .downloading || tracks[i].state == .processing
+        else { return }
+        tracks[i].state = .processing
+        tracks[i].stage = name
+        tracks[i].progress = 1
+    }
+
+    func closeOpenTracks(_ reason: CloseReason) {
+        for i in tracks.indices
+        where tracks[i].state == .downloading || tracks[i].state == .processing {
+            let wasProcessing = tracks[i].state == .processing
+            switch reason {
+            case .cancelled: tracks[i].state = .cancelled
+            case .failed: tracks[i].state = wasProcessing ? .done : .failed
+            case .succeeded: tracks[i].state = .done
+            case .nextStarted:
+                // Moving on while the bar was clearly short of the end suggests it was skipped.
+                let stoppedEarly = !wasProcessing && tracks[i].known && tracks[i].progress < 0.9
+                tracks[i].state = stoppedEarly ? .failed : .done
+            }
+            if tracks[i].state == .done { tracks[i].progress = 1 }
+        }
+    }
+
     init(url: String) { self.url = url }
 }
 
@@ -154,6 +227,9 @@ final class DownloadManager: ObservableObject {
         job.stage = ""
         job.note = nil
         job.outputs = []
+        job.tracks = []
+        job.playlistTitle = nil
+        job.playlistCount = nil
         job.state = .downloading
 
         let args = YTDLPCommand.arguments(url: job.url)
@@ -181,14 +257,17 @@ final class DownloadManager: ObservableObject {
         job.eta = nil
         job.outputs = urls
         if result.wasCancelled {
+            job.closeOpenTracks(.cancelled)
             job.state = .cancelled
         } else if result.status == 0 || !urls.isEmpty {
+            job.closeOpenTracks(result.status == 0 ? .succeeded : .nextStarted)
             job.progress = 1
             if result.status != 0 {
                 job.note = Self.errorSummary(result.errorText, fallback: "Finished with errors.")
             }
             job.state = .done
         } else {
+            job.closeOpenTracks(.failed)
             job.state = .failed(
                 Self.errorSummary(
                     result.errorText,
@@ -199,7 +278,8 @@ final class DownloadManager: ObservableObject {
     private static func apply(_ event: YTDLPEvent, to job: DownloadJob) {
         guard job.state.isBusy else { return }  // ignore late events after the job ended
         switch event {
-        case .download(let fraction, let speed, let eta, let index, let count, let title):
+        case .download(
+            let fraction, let speed, let eta, let index, let count, let playlist, let title):
             if job.state != .downloading { job.state = .downloading }
             if let fraction {
                 job.progress = fraction
@@ -210,10 +290,16 @@ final class DownloadManager: ObservableObject {
             job.speed = speed
             job.eta = eta
             if let title { job.title = title }
-            if let index, let count, count > 1 { job.itemText = "\(index)/\(count)" }
+            if let playlist { job.playlistTitle = playlist }
+            if let index, let count, count > 1 {
+                job.playlistCount = count
+                job.itemText = "\(index)/\(count)"
+                job.updateTrack(index: index, title: title, fraction: fraction)
+            }
         case .stage(let name):
             job.state = .processing
             job.stage = name
+            job.markCurrentTrackProcessing(name)
         }
     }
 
