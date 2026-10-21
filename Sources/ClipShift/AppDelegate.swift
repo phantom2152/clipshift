@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.title = "ClipShift Settings"
             w.isReleasedWhenClosed = false
             w.contentViewController = NSHostingController(rootView: SettingsView())
-            w.setContentSize(NSSize(width: 540, height: 520))
+            w.setContentSize(NSSize(width: 620, height: 540))
             w.center()
             w.center()
             settingsWindow = w

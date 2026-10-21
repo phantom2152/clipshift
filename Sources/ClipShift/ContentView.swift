@@ -21,7 +21,7 @@ struct ContentView: View {
     }
 
     /// Ask for confirmation in Clear All above this many files.
-    private let clearAllConfirmThreshold = 5
+    private var clearAllConfirmThreshold: Int { settings.clearAllConfirmThreshold }
 
     var body: some View {
         VStack(spacing: 14) {
