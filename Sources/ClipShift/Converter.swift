@@ -187,13 +187,48 @@ final class ConversionManager: ObservableObject {
     }
 
     func add(_ urls: [URL]) {
+        var skippedFiles = 0
+        var rejectedFolders: [String] = []
+
+        func append(_ url: URL) {
+            if jobs.contains(where: { $0.input.path == url.path }) { return }
+            jobs.append(Job(input: url))
+        }
+
         for url in urls where url.isFileURL {
             var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
-                !isDir.boolValue
-            else { continue }
-            if jobs.contains(where: { $0.input.path == url.path }) { continue }
-            jobs.append(Job(input: url))
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
+                continue
+            }
+            if isDir.boolValue {
+                switch MediaFilter.scan(url) {
+                case .tooMany: rejectedFolders.append(url.lastPathComponent)
+                case .files(let files): files.forEach(append)
+                }
+            } else if MediaFilter.isMedia(url) {
+                append(url)
+            } else {
+                skippedFiles += 1
+            }
+        }
+
+        var lines: [String] = []
+        if !rejectedFolders.isEmpty {
+            lines.append(
+                "Too many files in: \(rejectedFolders.joined(separator: ", ")). "
+                    + "Folders are limited to \(MediaFilter.maxFolderFiles) media files, so nothing from them was added."
+            )
+        }
+        if skippedFiles > 0 {
+            lines.append(
+                "Skipped \(skippedFiles) file\(skippedFiles == 1 ? "" : "s") that aren't video or audio."
+            )
+        }
+        if !lines.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = "Some items weren't added"
+            alert.informativeText = lines.joined(separator: "\n\n")
+            alert.runModal()
         }
     }
 

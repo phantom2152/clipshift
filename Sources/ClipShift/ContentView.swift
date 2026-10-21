@@ -36,11 +36,18 @@ struct ContentView: View {
             }
         }
         .onDrop(of: [.fileURL], isTargeted: $model.dropTargeted) { providers in
+            let collector = URLCollector()
+            let group = DispatchGroup()
             for provider in providers {
+                group.enter()
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    guard let url else { return }
-                    Task { @MainActor in ConversionManager.shared.add([url]) }
+                    if let url { collector.append(url) }
+                    group.leave()
                 }
+            }
+            group.notify(queue: .main) {
+                let urls = collector.all
+                Task { @MainActor in ConversionManager.shared.add(urls) }
             }
             return true
         }
@@ -247,5 +254,20 @@ final class ContentViewModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] in self?.quality = $0 }
             .store(in: &cancellables)
+    }
+}
+
+final class URLCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var urls: [URL] = []
+    func append(_ u: URL) {
+        lock.lock()
+        urls.append(u)
+        lock.unlock()
+    }
+    var all: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return urls
     }
 }

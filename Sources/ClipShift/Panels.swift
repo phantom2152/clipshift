@@ -1,13 +1,17 @@
 import AppKit
+import UniformTypeIdentifiers
 
 @MainActor
 enum Panels {
     static func pickFiles() -> [URL] {
         let p = NSOpenPanel()
         p.allowsMultipleSelection = true
-        p.canChooseDirectories = false
+        p.canChooseDirectories = true
         p.canChooseFiles = true
-        p.message = "Choose video or audio files to convert"
+        p.allowedContentTypes =
+            [.movie, .audio]
+            + MediaFilter.extraExtensions.compactMap { UTType(filenameExtension: $0) }
+        p.message = "Choose video or audio files, or folders, to convert"
         return p.runModal() == .OK ? p.urls : []
     }
 
