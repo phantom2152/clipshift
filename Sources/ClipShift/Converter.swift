@@ -165,8 +165,13 @@ final class Job: ObservableObject, Identifiable {
     @Published var progress: Double = 0
     @Published var indeterminate = false
     @Published var output: URL?
+    let fileSize: Int64?
 
-    init(input: URL) { self.input = input }
+    init(input: URL) {
+        self.input = input
+        self.fileSize = (try? input.resourceValues(forKeys: [.fileSizeKey]))?
+            .fileSize.map(Int64.init)
+    }
 }
 
 @MainActor
@@ -232,13 +237,17 @@ final class ConversionManager: ObservableObject {
         }
     }
 
-    func remove(_ job: Job) {
-        guard job.state != .running else { return }
-        jobs.removeAll { $0.id == job.id }
+    func remove(ids: Set<UUID>) {
+        jobs.removeAll { ids.contains($0.id) && $0.state != .running }
     }
 
     func clearFinished() {
         jobs.removeAll { $0.state == .done }
+    }
+
+    /// Removes everything except a job that is currently running.
+    func clearAll() {
+        jobs.removeAll { $0.state != .running }
     }
 
     func cancelAll() {

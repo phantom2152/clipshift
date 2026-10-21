@@ -20,6 +20,9 @@ struct ContentView: View {
         nonmutating set { model.dropTargeted = newValue }
     }
 
+    /// Ask for confirmation in Clear All above this many files.
+    private let clearAllConfirmThreshold = 5
+
     var body: some View {
         VStack(spacing: 14) {
             if manager.jobs.isEmpty { dropZone } else { fileList }
@@ -51,6 +54,17 @@ struct ContentView: View {
             }
             return true
         }
+        .confirmationDialog(
+            "Remove all \(manager.jobs.count) files from the list?",
+            isPresented: $model.showClearAllConfirm
+        ) {
+            Button("Clear All", role: .destructive) {
+                manager.clearAll()
+                model.selection.removeAll()
+            }
+        } message: {
+            Text("Your original files are not deleted. A running conversion is kept.")
+        }
     }
 
     // MARK: Drop zone
@@ -77,19 +91,70 @@ struct ContentView: View {
 
     // MARK: File list
 
+    private var countLabel: String {
+        let n = manager.jobs.count
+        var s = "\(n) file\(n == 1 ? "" : "s")"
+        if !model.selection.isEmpty { s += " · \(model.selection.count) selected" }
+        return s
+    }
+
+    private var hasRemovable: Bool {
+        manager.jobs.contains { $0.state != .running }
+    }
+
+    private func removeSelected() {
+        manager.remove(ids: model.selection)
+        model.selection.removeAll()
+    }
+
+    private func clearAllTapped() {
+        if manager.jobs.count > clearAllConfirmThreshold {
+            model.showClearAllConfirm = true
+        } else {
+            manager.clearAll()
+            model.selection.removeAll()
+        }
+    }
+
     private var fileList: some View {
         VStack(spacing: 8) {
             HStack {
-                Text("\(manager.jobs.count) file\(manager.jobs.count == 1 ? "" : "s")")
-                    .foregroundStyle(.secondary)
+                Text(countLabel).foregroundStyle(.secondary)
                 Spacer()
                 Button("Add Files…") { manager.add(Panels.pickFiles()) }
+                Button("Remove Selected") { removeSelected() }
+                    .disabled(model.selection.isEmpty)
                 Button("Clear Finished") { manager.clearFinished() }
+                    .disabled(!manager.jobs.contains { $0.state == .done })
+                Button("Clear All") { clearAllTapped() }
+                    .disabled(!hasRemovable)
             }
-            List(manager.jobs) { job in
-                JobRow(job: job) { manager.remove(job) }
+            List(manager.jobs, selection: $model.selection) { job in
+                JobRow(job: job)
             }
             .listStyle(.inset)
+            .onDeleteCommand { removeSelected() }
+            .contextMenu(forSelectionType: UUID.self) { ids in
+                if !ids.isEmpty {
+                    Button("Remove") {
+                        manager.remove(ids: ids)
+                        model.selection.subtract(ids)
+                    }
+                    let outputs = manager.jobs
+                        .filter { ids.contains($0.id) }
+                        .compactMap { $0.output ?? $0.input }
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting(outputs)
+                    }
+                }
+            }
+
+            Text(
+                "Click to select · ⌘-click to pick several · ⇧-click for a range · Delete to remove · ⌘A selects all"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -150,7 +215,6 @@ struct ContentView: View {
 
 struct JobRow: View {
     @ObservedObject var job: Job
-    let onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -193,19 +257,21 @@ struct JobRow: View {
                 .buttonStyle(.borderless)
                 .help("Show in Finder")
             }
-            if job.state != .running {
-                Button(action: onRemove) { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .help("Remove")
-            }
         }
         .padding(.vertical, 4)
     }
 
+    private var isAudio: Bool {
+        let ext = job.input.pathExtension.lowercased()
+        if ["mp3", "m4a", "wav", "flac", "ogg", "oga", "opus", "wma", "aac", "aiff"].contains(ext) {
+            return true
+        }
+        return UTType(filenameExtension: ext)?.conforms(to: .audio) ?? false
+    }
+
     private var iconName: String {
         switch job.state {
-        case .waiting: return "film"
+        case .waiting: return isAudio ? "waveform" : "film"
         case .running: return "arrow.triangle.2.circlepath"
         case .done: return "checkmark.circle.fill"
         case .failed: return "exclamationmark.triangle.fill"
@@ -226,13 +292,23 @@ struct JobRow: View {
         return false
     }
 
+    private var sourceInfo: String {
+        var parts: [String] = []
+        let ext = job.input.pathExtension.uppercased()
+        if !ext.isEmpty { parts.append(ext) }
+        if let size = job.fileSize {
+            parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var statusText: String {
         switch job.state {
-        case .waiting: return "Waiting"
+        case .waiting: return sourceInfo
         case .running: return ""
         case .done: return "Done → \(job.output?.lastPathComponent ?? "")"
         case .failed(let msg): return msg
-        case .cancelled: return "Cancelled"
+        case .cancelled: return "Cancelled · \(sourceInfo)"
         }
     }
 }
@@ -242,6 +318,8 @@ final class ContentViewModel: ObservableObject {
     @Published var format = Settings.shared.defaultFormat
     @Published var quality = Settings.shared.defaultQuality
     @Published var dropTargeted = false
+    @Published var selection = Set<UUID>()
+    @Published var showClearAllConfirm = false
 
     private var cancellables = Set<AnyCancellable>()
 
