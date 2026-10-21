@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -234,4 +235,17 @@ final class ContentViewModel: ObservableObject {
     @Published var format = Settings.shared.defaultFormat
     @Published var quality = Settings.shared.defaultQuality
     @Published var dropTargeted = false
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        Settings.shared.$defaultFormat
+            .dropFirst()
+            .sink { [weak self] in self?.format = $0 }
+            .store(in: &cancellables)
+        Settings.shared.$defaultQuality
+            .dropFirst()
+            .sink { [weak self] in self?.quality = $0 }
+            .store(in: &cancellables)
+    }
 }
