@@ -1,19 +1,15 @@
 import Foundation
 import UniformTypeIdentifiers
 
+@MainActor
 enum MediaFilter {
-    static let maxFolderFiles = 100
-    static let maxVisitedEntries = 20_000
+    static var maxFolderFiles: Int { max(1, Settings.shared.maxFolderFiles) }
+    static var maxVisitedEntries: Int { max(1, Settings.shared.maxVisitedEntries) }
+    static var extraExtensions: [String] { Settings.shared.extraExtensions }
 
-    /// Extensions the system may not map to movie/audio types.
-    static let extraExtensions: [String] = [
-        "mkv", "webm", "flv", "avi", "wmv", "ts", "m2ts", "mts", "m4v",
-        "opus", "flac", "ogg", "oga", "wma", "mpg", "mpeg", "3gp",
-    ]
-
-    static func isMedia(_ url: URL) -> Bool {
+    static func isMedia(_ url: URL, extras: [String]? = nil) -> Bool {
         let ext = url.pathExtension.lowercased()
-        if extraExtensions.contains(ext) { return true }
+        if (extras ?? extraExtensions).contains(ext) { return true }
         guard let t = UTType(filenameExtension: ext) else { return false }
         return t.conforms(to: .movie) || t.conforms(to: .audio)
     }
@@ -31,15 +27,19 @@ enum MediaFilter {
                 options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return .files([]) }
 
+        let maxFiles = maxFolderFiles
+        let maxVisited = maxVisitedEntries
+        let extras = extraExtensions
+
         var found: [URL] = []
         var visited = 0
         for case let url as URL in e {
             visited += 1
-            if visited > maxVisitedEntries { return .tooMany }
+            if visited > maxVisited { return .tooMany }
             guard (try? url.resourceValues(forKeys: keys))?.isRegularFile == true else { continue }
-            if isMedia(url) {
+            if isMedia(url, extras: extras) {
                 found.append(url)
-                if found.count > maxFolderFiles { return .tooMany }
+                if found.count > maxFiles { return .tooMany }
             }
         }
         found.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }

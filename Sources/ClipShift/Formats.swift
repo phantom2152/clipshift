@@ -52,58 +52,57 @@ enum OutputFormat: String, CaseIterable, Identifiable {
     }
 
     /// Output-side ffmpeg arguments (everything between `-i input` and the output path).
+    /// Values come from Settings and are clamped to ranges ffmpeg accepts.
+    @MainActor
     func arguments(quality q: Quality) -> [String] {
-        func pick<T>(_ high: T, _ medium: T, _ small: T) -> T {
-            switch q {
-            case .high: return high
-            case .medium: return medium
-            case .small: return small
-            }
-        }
+        let s = Settings.shared
+        func clamp(_ v: Int, _ lo: Int, _ hi: Int) -> Int { min(max(v, lo), hi) }
+
         let maps = ["-map", "0:V:0?", "-map", "0:a:0?"]
 
         switch self {
         case .mp4, .mov, .mkv:
-            var a =
-                maps + [
-                    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-                    "-c:v", "libx264", "-preset", "medium",
-                    "-crf", pick("18", "23", "28"),
-                    "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-b:a", "192k",
-                ]
+            let crf = String(clamp(s.crf[q], 0, 51))
+            let aac = "\(clamp(s.videoAACBitrate, 32, 640))k"
+            var a = maps
+            a += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
+            a += ["-c:v", "libx264", "-preset", s.x264Preset, "-crf", crf]
+            a += ["-pix_fmt", "yuv420p"]
+            a += ["-c:a", "aac", "-b:a", aac]
             if self != .mkv { a += ["-movflags", "+faststart"] }
             return a
 
         case .hevc:
-            return maps + [
-                "-c:v", "hevc_videotoolbox",
-                "-q:v", pick("65", "50", "35"),
-                "-tag:v", "hvc1",
-                "-c:a", "aac", "-b:a", "192k",
-                "-movflags", "+faststart",
-            ]
+            let quality = String(clamp(s.hevcQuality[q], 1, 100))
+            let aac = "\(clamp(s.videoAACBitrate, 32, 640))k"
+            var a = maps
+            a += ["-c:v", "hevc_videotoolbox", "-q:v", quality, "-tag:v", "hvc1"]
+            a += ["-c:a", "aac", "-b:a", aac]
+            a += ["-movflags", "+faststart"]
+            return a
 
         case .webm:
-            return maps + [
-                "-c:v", "libvpx-vp9", "-b:v", "0",
-                "-crf", pick("24", "31", "38"),
-                "-row-mt", "1", "-cpu-used", "4",
-                "-c:a", "libopus", "-b:a", "128k",
-            ]
+            let crf = String(clamp(s.vp9CRF[q], 0, 63))
+            let cpu = String(clamp(s.vp9CPUUsed, 0, 8))
+            let opus = "\(clamp(s.opusBitrate, 6, 510))k"
+            var a = maps
+            a += ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", crf]
+            a += ["-row-mt", "1", "-cpu-used", cpu]
+            a += ["-c:a", "libopus", "-b:a", opus]
+            return a
 
         case .gif:
-            let width: Int = pick(960, 640, 480)
-            let fps: Int = pick(15, 12, 10)
+            let width = clamp(s.gifWidth[q], 16, 7680)
+            let fps = clamp(s.gifFPS[q], 1, 60)
             let filter =
                 "fps=\(fps),scale='min(\(width),iw)':-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
             return ["-map", "0:V:0", "-vf", filter, "-loop", "0"]
 
         case .mp3:
-            return ["-vn", "-c:a", "libmp3lame", "-q:a", pick("0", "2", "5")]
+            return ["-vn", "-c:a", "libmp3lame", "-q:a", String(clamp(s.mp3Quality[q], 0, 9))]
 
         case .m4a:
-            return ["-vn", "-c:a", "aac", "-b:a", pick("256k", "192k", "128k")]
+            return ["-vn", "-c:a", "aac", "-b:a", "\(clamp(s.m4aBitrate[q], 32, 640))k"]
 
         case .wav:
             return ["-vn", "-c:a", "pcm_s16le"]

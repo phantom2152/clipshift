@@ -274,7 +274,7 @@ final class ConversionManager: ObservableObject {
 
             let s = Settings.shared
             if !finished.isEmpty {
-                if s.playSoundWhenDone { NSSound(named: "Glass")?.play() }
+                if s.playSoundWhenDone { NSSound(named: NSSound.Name(s.soundName))?.play() }
                 if s.revealWhenDone { NSWorkspace.shared.activateFileViewerSelecting(finished) }
             }
         }
@@ -348,19 +348,31 @@ final class ConversionManager: ObservableObject {
     static func outputURL(for input: URL, format: OutputFormat, folder: URL?, overwrite: Bool)
         -> URL
     {
+        let s = Settings.shared
         let dir = folder ?? input.deletingLastPathComponent()
         let base = input.deletingPathExtension().lastPathComponent
         var candidate = dir.appendingPathComponent(base).appendingPathExtension(format.ext)
 
+        // An empty suffix would still point at the source, so fall back to the factory one.
+        var convertedSuffix = s.convertedSuffix
+        if convertedSuffix.trimmingCharacters(in: .whitespaces).isEmpty {
+            convertedSuffix = Factory.convertedSuffix
+        }
+
         // Never write over the source file.
         if candidate.standardizedFileURL == input.standardizedFileURL {
-            candidate = dir.appendingPathComponent("\(base) (converted)").appendingPathExtension(
-                format.ext)
+            candidate = dir.appendingPathComponent("\(base)\(convertedSuffix)")
+                .appendingPathExtension(format.ext)
         }
         if !overwrite {
             var n = 1
             while FileManager.default.fileExists(atPath: candidate.path) {
-                candidate = dir.appendingPathComponent("\(base) (\(n))").appendingPathExtension(
+                // Without a "#" in the pattern, the number is appended so the loop always advances.
+                let tag =
+                    s.duplicateFormat.contains("#")
+                    ? s.duplicateFormat.replacingOccurrences(of: "#", with: String(n))
+                    : "\(s.duplicateFormat)\(n)"
+                candidate = dir.appendingPathComponent("\(base)\(tag)").appendingPathExtension(
                     format.ext)
                 n += 1
             }

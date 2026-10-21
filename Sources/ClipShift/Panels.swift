@@ -30,7 +30,10 @@ enum Panels {
         p.canChooseFiles = true
         p.canChooseDirectories = false
         p.allowsMultipleSelection = false
-        p.directoryURL = URL(fileURLWithPath: "/opt/homebrew/bin")
+        let current = URL(fileURLWithPath: Settings.shared.resolvedFFmpegPath)
+            .deletingLastPathComponent()
+        let fallback = URL(fileURLWithPath: Factory.ffmpegPath).deletingLastPathComponent()
+        p.directoryURL = FileManager.default.fileExists(atPath: current.path) ? current : fallback
         p.message = "Select the ffmpeg binary"
         p.prompt = "Select"
         return p.runModal() == .OK ? p.url : nil
