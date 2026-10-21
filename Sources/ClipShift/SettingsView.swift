@@ -10,9 +10,10 @@ struct SettingsView: View {
             AudioTab().tabItem { Label("Audio", systemImage: "waveform") }
             InputTab().tabItem { Label("Input", systemImage: "tray.and.arrow.down") }
             ToolsTab().tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
+            DownloadsTab().tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
             AdvancedTab().tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
         }
-        .frame(width: 620, height: 540)
+        .frame(width: 700, height: 540)
     }
 }
 
@@ -319,6 +320,15 @@ private struct ToolsTab: View {
         FileManager.default.isExecutableFile(atPath: s.resolvedFFmpegPath)
     }
 
+    private var ytdlpTestResult: String? {
+        get { model.ytdlpTestResult }
+        nonmutating set { model.ytdlpTestResult = newValue }
+    }
+
+    private var ytdlpExists: Bool {
+        FileManager.default.isExecutableFile(atPath: s.resolvedYTDLPPath)
+    }
+
     var body: some View {
         Form {
             Section("ffmpeg") {
@@ -353,9 +363,48 @@ private struct ToolsTab: View {
                 Hint("Auto-detect checks the Homebrew locations (Apple Silicon, then Intel).")
             }
 
+            Section("yt-dlp") {
+                HStack {
+                    TextField("Path", text: $s.ytdlpPath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                    Button("Choose…") {
+                        if let url = Panels.pickExecutable(
+                            name: "yt-dlp", startingAt: s.resolvedYTDLPPath)
+                        {
+                            s.ytdlpPath = url.path
+                        }
+                    }
+                }
+                HStack {
+                    if ytdlpExists {
+                        Label("Found", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Label("Not found or not executable", systemImage: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                    }
+                    Spacer()
+                    Button("Auto-detect") {
+                        s.ytdlpPath = Settings.detectYTDLP()
+                        ytdlpTestResult = nil
+                    }
+                    Button("Test") { testYTDLP() }.disabled(!ytdlpExists)
+                }
+                if let ytdlpTestResult {
+                    Text(ytdlpTestResult)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Hint(
+                    "Install with: brew install yt-dlp. Sites change often, so run brew upgrade yt-dlp if downloads start failing."
+                )
+            }
+
             ResetSection(title: "Reset to Auto-detected") {
                 s.resetTools()
                 testResult = nil
+                ytdlpTestResult = nil
             }
         }
         .formStyle(.grouped)
@@ -380,6 +429,118 @@ private struct ToolsTab: View {
             }.value
             testResult = text
         }
+    }
+
+    private func testYTDLP() {
+        let path = s.resolvedYTDLPPath
+        ytdlpTestResult = "Running…"
+        Task {
+            let text = await Task.detached { () -> String in
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: path)
+                p.arguments = ["--version"]
+                let out = Pipe()
+                p.standardOutput = out
+                p.standardError = FileHandle.nullDevice
+                do { try p.run() } catch { return "Could not run: \(error.localizedDescription)" }
+                let data = out.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                let v = String(decoding: data, as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return v.isEmpty ? "No output from yt-dlp." : "yt-dlp version \(v)"
+            }.value
+            ytdlpTestResult = text
+        }
+    }
+}
+
+// MARK: - Downloads
+
+private struct DownloadsTab: View {
+    @ObservedObject private var s = Settings.shared
+
+    private static let audioFormats = ["mp3", "m4a", "opus", "flac", "wav", "best"]
+    private static let containers = ["mp4", "mkv", "webm"]
+
+    var body: some View {
+        Form {
+            Section("Save to") {
+                HStack {
+                    Text(
+                        s.downloadFolderPath.isEmpty
+                            ? "Same as \"Save to\" folder (or Downloads)"
+                            : (s.downloadFolderPath as NSString).abbreviatingWithTildeInPath
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Choose…") {
+                        if let url = Panels.pickFolder() { s.downloadFolderPath = url.path }
+                    }
+                    if !s.downloadFolderPath.isEmpty {
+                        Button("Reset") { s.downloadFolderPath = "" }
+                    }
+                }
+                TextField("File name template", text: $s.downloadFilenameTemplate)
+                    .font(.system(.body, design: .monospaced))
+                Hint(
+                    "yt-dlp output template. %(title)s is the video title, %(uploader)s the channel, %(id)s the video id."
+                )
+            }
+
+            Section("What to download") {
+                Toggle("Audio only", isOn: $s.downloadAudioOnly)
+                Picker("Audio format", selection: $s.downloadAudioFormat) {
+                    ForEach(Self.audioFormats, id: \.self) { Text($0).tag($0) }
+                }
+                .disabled(!s.downloadAudioOnly)
+                IntRow(title: "Audio quality", value: $s.downloadAudioQuality)
+                    .disabled(!s.downloadAudioOnly)
+                Toggle("Embed cover art", isOn: $s.downloadEmbedCoverArt)
+                    .disabled(!s.downloadAudioOnly)
+                Hint(
+                    "Quality 0 (best) to 10 (smallest) for MP3 and similar. \"best\" keeps the original audio without re-encoding."
+                )
+            }
+
+            Section("Video") {
+                Picker("Container", selection: $s.downloadVideoContainer) {
+                    ForEach(Self.containers, id: \.self) { Text($0).tag($0) }
+                }
+                .disabled(s.downloadAudioOnly)
+                IntRow(title: "Max height", unit: "px", value: $s.downloadMaxHeight)
+                    .disabled(s.downloadAudioOnly)
+                Hint("0 means the best available. Use 1080 or 720 to cap the resolution.")
+            }
+
+            Section("Playlists") {
+                Toggle("Download whole playlists", isOn: $s.downloadPlaylists)
+                IntRow(title: "Max items per playlist", value: $s.downloadMaxPlaylistItems)
+                    .disabled(!s.downloadPlaylists)
+                Toggle("Group playlist downloads into a folder", isOn: $s.downloadGroupPlaylists)
+                    .disabled(!s.downloadPlaylists)
+                TextField("Folder and numbering prefix", text: $s.downloadPlaylistPrefix)
+                    .font(.system(.body, design: .monospaced))
+                    .disabled(!s.downloadPlaylists || !s.downloadGroupPlaylists)
+                Hint(
+                    "When off, a video link inside a playlist downloads only that video. The prefix is added in front of the file name template and is empty for single videos."
+                )
+            }
+
+            Section("Extras") {
+                Toggle(
+                    "Embed metadata (title, artist, album, year…)", isOn: $s.downloadEmbedMetadata)
+                TextField("Extra yt-dlp arguments", text: $s.downloadExtraArgs, axis: .vertical)
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1...3)
+                Hint(
+                    "Advanced. Added to every download, for example: --cookies-from-browser safari")
+            }
+
+            ResetSection { s.resetDownloads() }
+        }
+        .formStyle(.grouped)
     }
 }
 
@@ -436,4 +597,5 @@ private struct AdvancedTab: View {
 final class SettingsModel: ObservableObject {
     @Published var testResult: String?
     @Published var confirmResetAll = false
+    @Published var ytdlpTestResult: String?
 }

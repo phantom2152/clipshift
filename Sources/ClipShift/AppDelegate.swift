@@ -31,14 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if ConversionManager.shared.isRunning {
+        if ConversionManager.shared.isRunning || DownloadManager.shared.isRunning {
             let alert = NSAlert()
-            alert.messageText = "A conversion is still running"
+            alert.messageText = "A conversion or download is still running"
             alert.informativeText = "Quitting now will cancel it."
             alert.addButton(withTitle: "Quit")
             alert.addButton(withTitle: "Keep Running")
             if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }
             ConversionManager.shared.cancelAll()
+            DownloadManager.shared.cancelAll()
         }
         return .terminateNow
     }
@@ -72,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.title = "ClipShift Settings"
             w.isReleasedWhenClosed = false
             w.contentViewController = NSHostingController(rootView: SettingsView())
-            w.setContentSize(NSSize(width: 620, height: 540))
+            w.setContentSize(NSSize(width: 700, height: 540))
             w.center()
             w.center()
             settingsWindow = w

@@ -25,16 +25,16 @@ enum Panels {
         return p.runModal() == .OK ? p.url : nil
     }
 
-    static func pickExecutable() -> URL? {
+    static func pickExecutable(name: String = "ffmpeg", startingAt path: String? = nil) -> URL? {
         let p = NSOpenPanel()
         p.canChooseFiles = true
         p.canChooseDirectories = false
         p.allowsMultipleSelection = false
-        let current = URL(fileURLWithPath: Settings.shared.resolvedFFmpegPath)
+        let current = URL(fileURLWithPath: path ?? Settings.shared.resolvedFFmpegPath)
             .deletingLastPathComponent()
         let fallback = URL(fileURLWithPath: Factory.ffmpegPath).deletingLastPathComponent()
         p.directoryURL = FileManager.default.fileExists(atPath: current.path) ? current : fallback
-        p.message = "Select the ffmpeg binary"
+        p.message = "Select the \(name) binary"
         p.prompt = "Select"
         return p.runModal() == .OK ? p.url : nil
     }

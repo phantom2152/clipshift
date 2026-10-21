@@ -61,6 +61,27 @@ enum Factory {
     static let mp3Quality = PerQuality<Int>(high: 0, medium: 2, small: 5)
     static let m4aBitrate = PerQuality<Int>(high: 256, medium: 192, small: 128)
 
+    // Tools (yt-dlp)
+    static let ytdlpPath = "/opt/homebrew/bin/yt-dlp"
+    static let ytdlpCandidates = ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"]
+
+    // Downloads
+    static let downloadFolderPath = ""
+    static let downloadAudioOnly = false
+    static let downloadAudioFormat = "mp3"
+    static let downloadAudioQuality = 0
+    static let downloadVideoContainer = "mp4"
+    static let downloadMaxHeight = 0
+    static let downloadFilenameTemplate = "%(title)s"
+    static let downloadPlaylists = false
+    static let downloadMaxPlaylistItems = 50
+    static let downloadEmbedMetadata = true
+    static let downloadEmbedCoverArt = true
+    static let downloadGroupPlaylists = true
+    /// Becomes "Playlist Name/03 - " for playlists and nothing for single videos.
+    static let downloadPlaylistPrefix = "%(playlist_title)s/%(playlist_index)02d - "
+    static let downloadExtraArgs = ""
+
     // Input
     static let maxFolderFiles = 500
     static let maxVisitedEntries = 20_000
@@ -78,6 +99,7 @@ final class Settings: ObservableObject {
 
     // MARK: Tools
     @Published var ffmpegPath: String { didSet { Self.put(ffmpegPath, "ffmpegPath") } }
+    @Published var ytdlpPath: String { didSet { Self.put(ytdlpPath, "ytdlpPath") } }
 
     // MARK: General
     @Published var defaultFormat: OutputFormat {
@@ -168,11 +190,69 @@ final class Settings: ObservableObject {
         didSet { Self.put(extraExtensionsText, "extraExtensionsText") }
     }
 
+    // MARK: Downloads
+    @Published var downloadFolderPath: String {
+        didSet { Self.put(downloadFolderPath, "downloadFolderPath") }
+    }
+    @Published var downloadAudioOnly: Bool {
+        didSet { Self.put(downloadAudioOnly, "downloadAudioOnly") }
+    }
+    @Published var downloadAudioFormat: String {
+        didSet { Self.put(downloadAudioFormat, "downloadAudioFormat") }
+    }
+    @Published var downloadAudioQuality: Int {
+        didSet { Self.put(downloadAudioQuality, "downloadAudioQuality") }
+    }
+    @Published var downloadVideoContainer: String {
+        didSet { Self.put(downloadVideoContainer, "downloadVideoContainer") }
+    }
+    @Published var downloadMaxHeight: Int {
+        didSet { Self.put(downloadMaxHeight, "downloadMaxHeight") }
+    }
+    @Published var downloadFilenameTemplate: String {
+        didSet { Self.put(downloadFilenameTemplate, "downloadFilenameTemplate") }
+    }
+    @Published var downloadPlaylists: Bool {
+        didSet { Self.put(downloadPlaylists, "downloadPlaylists") }
+    }
+    @Published var downloadMaxPlaylistItems: Int {
+        didSet { Self.put(downloadMaxPlaylistItems, "downloadMaxPlaylistItems") }
+    }
+    @Published var downloadEmbedMetadata: Bool {
+        didSet { Self.put(downloadEmbedMetadata, "downloadEmbedMetadata") }
+    }
+
+    @Published var downloadEmbedCoverArt: Bool {
+        didSet { Self.put(downloadEmbedCoverArt, "downloadEmbedCoverArt") }
+    }
+    @Published var downloadGroupPlaylists: Bool {
+        didSet { Self.put(downloadGroupPlaylists, "downloadGroupPlaylists") }
+    }
+    @Published var downloadPlaylistPrefix: String {
+        didSet { Self.put(downloadPlaylistPrefix, "downloadPlaylistPrefix") }
+    }
+    @Published var downloadExtraArgs: String {
+        didSet { Self.put(downloadExtraArgs, "downloadExtraArgs") }
+    }
+
     // MARK: Advanced
     @Published var logEnabled: Bool { didSet { Self.put(logEnabled, "logEnabled") } }
     @Published var logMaxMB: Int { didSet { Self.put(logMaxMB, "logMaxMB") } }
 
     // MARK: Derived
+
+    var resolvedYTDLPPath: String {
+        (ytdlpPath.trimmingCharacters(in: .whitespacesAndNewlines) as NSString).expandingTildeInPath
+    }
+
+    /// Download folder → "Save to" folder → ~/Downloads.
+    var resolvedDownloadFolder: URL {
+        if !downloadFolderPath.isEmpty {
+            return URL(fileURLWithPath: downloadFolderPath, isDirectory: true)
+        }
+        if let o = outputFolder { return o }
+        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+    }
 
     var resolvedFFmpegPath: String {
         (ffmpegPath.trimmingCharacters(in: .whitespacesAndNewlines) as NSString)
@@ -196,7 +276,7 @@ final class Settings: ObservableObject {
     private init() {
         let d = UserDefaults.standard
         ffmpegPath = d.string(forKey: "ffmpegPath") ?? Settings.detectFFmpeg()
-
+        ytdlpPath = d.string(forKey: "ytdlpPath") ?? Settings.detectYTDLP()
         defaultFormat =
             OutputFormat(rawValue: d.string(forKey: "defaultFormat") ?? "") ?? Factory.defaultFormat
         defaultQuality =
@@ -240,6 +320,25 @@ final class Settings: ObservableObject {
         maxFolderFiles = Self.int("maxFolderFiles", Factory.maxFolderFiles)
         maxVisitedEntries = Self.int("maxVisitedEntries", Factory.maxVisitedEntries)
         extraExtensionsText = Self.string("extraExtensionsText", Factory.extraExtensions)
+
+        downloadFolderPath = Self.string("downloadFolderPath", Factory.downloadFolderPath)
+        downloadAudioOnly = Self.bool("downloadAudioOnly", Factory.downloadAudioOnly)
+        downloadAudioFormat = Self.string("downloadAudioFormat", Factory.downloadAudioFormat)
+        downloadAudioQuality = Self.int("downloadAudioQuality", Factory.downloadAudioQuality)
+        downloadVideoContainer = Self.string(
+            "downloadVideoContainer", Factory.downloadVideoContainer)
+        downloadMaxHeight = Self.int("downloadMaxHeight", Factory.downloadMaxHeight)
+        downloadFilenameTemplate = Self.string(
+            "downloadFilenameTemplate", Factory.downloadFilenameTemplate)
+        downloadPlaylists = Self.bool("downloadPlaylists", Factory.downloadPlaylists)
+        downloadMaxPlaylistItems = Self.int(
+            "downloadMaxPlaylistItems", Factory.downloadMaxPlaylistItems)
+        downloadEmbedMetadata = Self.bool("downloadEmbedMetadata", Factory.downloadEmbedMetadata)
+        downloadEmbedCoverArt = Self.bool("downloadEmbedCoverArt", Factory.downloadEmbedCoverArt)
+        downloadGroupPlaylists = Self.bool("downloadGroupPlaylists", Factory.downloadGroupPlaylists)
+        downloadPlaylistPrefix = Self.string(
+            "downloadPlaylistPrefix", Factory.downloadPlaylistPrefix)
+        downloadExtraArgs = Self.string("downloadExtraArgs", Factory.downloadExtraArgs)
 
         logEnabled = Self.bool("logEnabled", Factory.logEnabled)
         logMaxMB = Self.int("logMaxMB", Factory.logMaxMB)
@@ -298,6 +397,24 @@ final class Settings: ObservableObject {
 
     func resetTools() {
         ffmpegPath = Settings.detectFFmpeg()
+        ytdlpPath = Settings.detectYTDLP()
+    }
+
+    func resetDownloads() {
+        downloadFolderPath = Factory.downloadFolderPath
+        downloadAudioOnly = Factory.downloadAudioOnly
+        downloadAudioFormat = Factory.downloadAudioFormat
+        downloadAudioQuality = Factory.downloadAudioQuality
+        downloadVideoContainer = Factory.downloadVideoContainer
+        downloadMaxHeight = Factory.downloadMaxHeight
+        downloadFilenameTemplate = Factory.downloadFilenameTemplate
+        downloadPlaylists = Factory.downloadPlaylists
+        downloadMaxPlaylistItems = Factory.downloadMaxPlaylistItems
+        downloadEmbedMetadata = Factory.downloadEmbedMetadata
+        downloadEmbedCoverArt = Factory.downloadEmbedCoverArt
+        downloadGroupPlaylists = Factory.downloadGroupPlaylists
+        downloadPlaylistPrefix = Factory.downloadPlaylistPrefix
+        downloadExtraArgs = Factory.downloadExtraArgs
     }
 
     func resetAdvanced() {
@@ -312,6 +429,7 @@ final class Settings: ObservableObject {
         resetAudio()
         resetInput()
         resetTools()
+        resetDownloads()
         resetAdvanced()
     }
 
@@ -319,6 +437,11 @@ final class Settings: ObservableObject {
     nonisolated static func detectFFmpeg() -> String {
         Factory.ffmpegCandidates.first { FileManager.default.isExecutableFile(atPath: $0) }
             ?? Factory.ffmpegPath
+    }
+
+    nonisolated static func detectYTDLP() -> String {
+        Factory.ytdlpCandidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+            ?? Factory.ytdlpPath
     }
 
     // MARK: Storage helpers

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @ObservedObject private var manager = ConversionManager.shared
     @ObservedObject private var settings = Settings.shared
+    @ObservedObject private var downloads = DownloadManager.shared
     @StateObject private var model = ContentViewModel()
 
     private var format: OutputFormat {
@@ -25,7 +26,13 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            if manager.jobs.isEmpty { dropZone } else { fileList }
+            urlBar
+            if manager.jobs.isEmpty && downloads.jobs.isEmpty {
+                dropZone
+            } else {
+                if !downloads.jobs.isEmpty { downloadList }
+                if !manager.jobs.isEmpty { fileList }
+            }
             optionsPanel
         }
         .padding(18)
@@ -64,6 +71,63 @@ struct ContentView: View {
             }
         } message: {
             Text("Your original files are not deleted. A running conversion is kept.")
+        }
+    }
+    // MARK: Downloads
+
+    private func submitURLs() {
+        if downloads.addAndStart(model.urlText) > 0 { model.urlText = "" }
+    }
+
+    private func pasteLinks() {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+        model.urlText = text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private var urlBar: some View {
+        HStack(spacing: 8) {
+            TextField("Paste a video or playlist link to download…", text: $model.urlText)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { submitURLs() }
+            Button("Paste") { pasteLinks() }
+            Toggle("Audio only", isOn: $settings.downloadAudioOnly)
+            Button("Download") { submitURLs() }
+                .disabled(model.urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    private var downloadList: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("\(downloads.jobs.count) download\(downloads.jobs.count == 1 ? "" : "s")")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if downloads.isRunning {
+                    Button("Cancel Downloads") { downloads.cancelAll() }
+                }
+                Button("Clear Finished") { downloads.clearFinished() }
+                    .disabled(!downloads.jobs.contains { $0.state == .done })
+                Button("Clear All") { downloads.clearAll() }
+                    .disabled(!downloads.jobs.contains { !$0.state.isBusy })
+            }
+            List(downloads.jobs) { job in
+                DownloadRow(job: job) { downloads.retry(job) }
+                    .contextMenu {
+                        if !job.state.isBusy {
+                            Button("Remove") { downloads.remove(job) }
+                        }
+                        if job.state.canRetry {
+                            Button("Retry") { downloads.retry(job) }
+                        }
+                        if !job.outputs.isEmpty {
+                            Button("Show in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting(job.outputs)
+                            }
+                        }
+                    }
+            }
+            .listStyle(.inset)
+            .frame(maxHeight: manager.jobs.isEmpty ? .infinity : 190)
         }
     }
 
@@ -356,6 +420,7 @@ final class ContentViewModel: ObservableObject {
     @Published var format: OutputFormat
     @Published var quality: Quality
     @Published var dropTargeted = false
+    @Published var urlText = ""
     @Published var selection = Set<UUID>()
     @Published var showClearAllConfirm = false
 
