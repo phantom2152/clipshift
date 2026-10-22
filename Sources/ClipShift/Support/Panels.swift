@@ -10,7 +10,7 @@ enum Panels {
         p.canChooseFiles = true
         p.allowedContentTypes =
             [.movie, .audio]
-            + MediaFilter.extraExtensions.compactMap { UTType(filenameExtension: $0) }
+            + AppSettings.shared.extraExtensions.compactMap { UTType(filenameExtension: $0) }
         p.message = "Choose video or audio files, or folders, to convert"
         return p.runModal() == .OK ? p.urls : []
     }
@@ -25,14 +25,13 @@ enum Panels {
         return p.runModal() == .OK ? p.url : nil
     }
 
-    static func pickExecutable(name: String = "ffmpeg", startingAt path: String? = nil) -> URL? {
+    static func pickExecutable(name: String, startingAt path: String) -> URL? {
         let p = NSOpenPanel()
         p.canChooseFiles = true
         p.canChooseDirectories = false
         p.allowsMultipleSelection = false
-        let current = URL(fileURLWithPath: path ?? Settings.shared.resolvedFFmpegPath)
-            .deletingLastPathComponent()
-        let fallback = URL(fileURLWithPath: Factory.ffmpegPath).deletingLastPathComponent()
+        let current = URL(fileURLWithPath: path).deletingLastPathComponent()
+        let fallback = URL(fileURLWithPath: AppDefaults.ffmpegPath).deletingLastPathComponent()
         p.directoryURL = FileManager.default.fileExists(atPath: current.path) ? current : fallback
         p.message = "Select the \(name) binary"
         p.prompt = "Select"

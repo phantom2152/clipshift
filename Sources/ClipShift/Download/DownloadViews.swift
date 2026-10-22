@@ -1,5 +1,54 @@
 import SwiftUI
 
+/// The header, buttons and list for the download queue.
+struct DownloadListSection: View {
+    @ObservedObject private var downloads = DownloadManager.shared
+    /// Taller when there is no convert list sharing the window.
+    let expandToFill: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(Fmt.count(downloads.jobs.count, "download"))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if downloads.isRunning {
+                    Button("Cancel Downloads") { downloads.cancelAll() }
+                }
+                Button("Clear Finished") { downloads.clearFinished() }
+                    .disabled(!downloads.jobs.contains { $0.state == .done })
+                Button("Clear All") { downloads.clearAll() }
+                    .disabled(!downloads.jobs.contains { !$0.state.isBusy })
+            }
+            List(downloads.jobs) { job in
+                DownloadRow(
+                    job: job,
+                    onRetry: { downloads.retry(job) },
+                    onCancel: { downloads.cancel(job) }
+                )
+                .contextMenu {
+                    if job.state.isBusy || job.state == .waiting {
+                        Button("Cancel") { downloads.cancel(job) }
+                    }
+                    if !job.state.isBusy {
+                        Button("Remove") { downloads.remove(job) }
+                    }
+                    if job.state.canRetry {
+                        Button("Retry") { downloads.retry(job) }
+                    }
+                    if !job.outputs.isEmpty {
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting(job.outputs)
+                        }
+                    }
+                }
+            }
+            .listStyle(.inset)
+            .frame(maxHeight: expandToFill ? .infinity : 190)
+        }
+    }
+}
+
 struct DownloadRow: View {
     @ObservedObject var job: DownloadJob
     let onRetry: () -> Void
@@ -10,7 +59,7 @@ struct DownloadRow: View {
             HStack(spacing: 12) {
                 Image(systemName: iconName)
                     .font(.title2)
-                    .foregroundStyle(iconColor)
+                    .foregroundStyle(job.state.phase.color)
                     .frame(width: 28)
 
                 if job.isPlaylist { playlistSummary } else { singleSummary }
@@ -59,9 +108,7 @@ struct DownloadRow: View {
                 .truncationMode(.middle)
             if job.state == .downloading {
                 songBar
-                if !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                }
+                if !detail.isEmpty { detailLine }
             } else if job.state == .processing {
                 ProgressView().progressViewStyle(.linear)
                 Text(job.stage).font(.caption).foregroundStyle(.secondary)
@@ -99,7 +146,7 @@ struct DownloadRow: View {
                 if job.state == .processing {
                     Text(job.stage).font(.caption).foregroundStyle(.secondary)
                 } else if !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    detailLine
                 }
             } else {
                 statusLabel
@@ -129,10 +176,14 @@ struct DownloadRow: View {
         }
     }
 
+    private var detailLine: some View {
+        Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+    }
+
     private var statusLabel: some View {
         Text(statusText)
             .font(.caption)
-            .foregroundStyle(statusIsError ? Color.red : Color.secondary)
+            .foregroundStyle(job.state.phase.isError ? Color.red : Color.secondary)
             .lineLimit(4)
             .textSelection(.enabled)
     }
@@ -148,19 +199,10 @@ struct DownloadRow: View {
     private var detail: String {
         var parts: [String] = []
         if let sp = job.speed, sp.isFinite, sp >= 0 {
-            parts.append(
-                ByteCountFormatter.string(fromByteCount: Int64(sp), countStyle: .file) + "/s")
+            parts.append(Fmt.bytes(Int64(sp)) + "/s")
         }
-        if let e = job.eta, e.isFinite, e >= 0 { parts.append("\(Self.clock(e)) left") }
+        if let e = job.eta, e.isFinite, e >= 0 { parts.append("\(Fmt.clock(e)) left") }
         return parts.joined(separator: " · ")
-    }
-
-    private static func clock(_ secs: Double) -> String {
-        let t = Int(secs.rounded())
-        let h = t / 3600
-        let m = (t % 3600) / 60
-        let s = t % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
     private var iconName: String {
@@ -174,19 +216,6 @@ struct DownloadRow: View {
         }
     }
 
-    private var iconColor: Color {
-        switch job.state {
-        case .done: return .green
-        case .failed: return .red
-        default: return .secondary
-        }
-    }
-
-    private var statusIsError: Bool {
-        if case .failed = job.state { return true }
-        return false
-    }
-
     private var statusText: String {
         switch job.state {
         case .waiting: return "Up next"
@@ -198,9 +227,7 @@ struct DownloadRow: View {
             case 1: t = "Done → \(job.outputs[0].lastPathComponent)"
             default:
                 t = "Done → \(job.outputs.count) files"
-                if let n = job.playlistCount, n > job.outputs.count {
-                    t += " of \(n)"
-                }
+                if let n = job.playlistCount, n > job.outputs.count { t += " of \(n)" }
             }
             if let n = job.note { t += "\n" + n }
             return t
@@ -216,7 +243,7 @@ struct TrackLine: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
-                .foregroundStyle(iconColor)
+                .foregroundStyle(track.phase.color)
                 .frame(width: 16)
             Text(track.title)
                 .lineLimit(1)
@@ -257,14 +284,6 @@ struct TrackLine: View {
         case .done: return "checkmark.circle.fill"
         case .failed: return "exclamationmark.triangle.fill"
         case .cancelled: return "slash.circle"
-        }
-    }
-
-    private var iconColor: Color {
-        switch track.state {
-        case .done: return .green
-        case .failed: return .red
-        default: return .secondary
         }
     }
 }

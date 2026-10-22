@@ -10,12 +10,13 @@ enum Log {
 
     private static let queue = DispatchQueue(label: "clipshift.log")
 
+    // Read straight from UserDefaults (same keys as AppSettings) so logging works from any thread.
     private static var enabled: Bool {
-        UserDefaults.standard.object(forKey: "logEnabled") as? Bool ?? Factory.logEnabled
+        UserDefaults.standard.object(forKey: "logEnabled") as? Bool ?? AppDefaults.logEnabled
     }
 
     private static var maxBytes: Int {
-        let mb = UserDefaults.standard.object(forKey: "logMaxMB") as? Int ?? Factory.logMaxMB
+        let mb = UserDefaults.standard.object(forKey: "logMaxMB") as? Int ?? AppDefaults.logMaxMB
         return max(1, mb) * 1_000_000
     }
 

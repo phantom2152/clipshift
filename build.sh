@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds ClipShift.app (Command Line Tools are enough, no Xcode needed) and launches it.
 #   ./build.sh                          ad-hoc signature
-#   SIGN_ID="ClipBar Dev" ./build.sh    sign with a self-signed cert
+#   SIGN_ID="ClipShift Dev" ./build.sh  sign with a self-signed cert
 #   NO_LAUNCH=1 ./build.sh              build only, don't open
 set -euo pipefail
 cd "$(dirname "$0")"

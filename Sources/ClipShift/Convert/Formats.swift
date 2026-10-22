@@ -51,11 +51,18 @@ enum OutputFormat: String, CaseIterable, Identifiable {
         }
     }
 
+    var isAudioOnly: Bool {
+        switch self {
+        case .mp3, .m4a, .wav: return true
+        default: return false
+        }
+    }
+
     /// Output-side ffmpeg arguments (everything between `-i input` and the output path).
     /// Values come from Settings and are clamped to ranges ffmpeg accepts.
     @MainActor
     func arguments(quality q: Quality) -> [String] {
-        let s = Settings.shared
+        let s = AppSettings.shared
         func clamp(_ v: Int, _ lo: Int, _ hi: Int) -> Int { min(max(v, lo), hi) }
 
         let maps = ["-map", "0:V:0?", "-map", "0:a:0?"]
