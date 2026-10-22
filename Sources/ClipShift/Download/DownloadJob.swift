@@ -55,6 +55,10 @@ final class DownloadJob: ObservableObject, Identifiable {
     var runner = ProcessRunner(stderrLimit: 4000, gracefulCancel: true)
     /// Whether this download was audio only (decides if converting it to a video format makes sense).
     var audioOnly = false
+    /// Set when "Convert after download" was ticked as this link was queued. The format and
+    /// quality are saved then, so later changes to the pickers don't affect it.
+    var convertFormat: OutputFormat?
+    var convertQuality: Quality?
 
     @Published var state: State = .waiting
     @Published var progress = 0.0

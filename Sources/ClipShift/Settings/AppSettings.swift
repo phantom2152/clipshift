@@ -155,7 +155,6 @@ final class AppSettings: ObservableObject {
     /// Becomes "Playlist Name/" for playlists and nothing for single videos.
     @AppStorage("downloadPlaylistPrefix") var downloadPlaylistPrefix = "%(playlist_title)s/"
     @AppStorage("downloadExtraArgs") var downloadExtraArgs = ""
-    @AppStorage("downloadThenConvert") var downloadThenConvert = false
     @AppStorage("deleteOriginalAfterConvert") var deleteOriginalAfterConvert = true
 
     // MARK: Advanced
@@ -227,8 +226,7 @@ final class AppSettings: ObservableObject {
             "downloadAudioQuality", "downloadVideoContainer", "downloadMaxHeight",
             "downloadFilenameTemplate", "downloadPlaylists", "downloadMaxPlaylistItems",
             "downloadEmbedMetadata", "downloadEmbedCoverArt", "downloadGroupPlaylists",
-            "downloadPlaylistPrefix", "downloadExtraArgs", "downloadThenConvert",
-            "deleteOriginalAfterConvert",
+            "downloadPlaylistPrefix", "downloadExtraArgs", "deleteOriginalAfterConvert",
         ],
         .advanced: ["logEnabled", "logMaxMB"],
     ]

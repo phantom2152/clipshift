@@ -29,6 +29,10 @@ final class Job: ObservableObject, Identifiable {
     let input: URL
     var runner = ProcessRunner()
     var deleteInputOnSuccess = false
+    /// Set for files handed over by a download: the format and quality chosen when the
+    /// download was queued. Other jobs use whatever the main window shows when Convert is pressed.
+    var formatOverride: OutputFormat?
+    var qualityOverride: Quality?
     @Published var state: State = .waiting
     @Published var progress: Double = 0
     @Published var indeterminate = false
@@ -72,10 +76,14 @@ final class ConversionManager: ObservableObject {
     // MARK: Adding and removing
 
     /// Adds finished downloads without the file-type filter or notices.
-    func addDownloaded(_ urls: [URL], deleteOriginal: Bool) {
+    func addDownloaded(
+        _ urls: [URL], deleteOriginal: Bool, format: OutputFormat, quality: Quality
+    ) {
         for url in urls where !jobs.contains(where: { $0.input.path == url.path }) {
             let job = Job(input: url)
             job.deleteInputOnSuccess = deleteOriginal
+            job.formatOverride = format
+            job.qualityOverride = quality
             jobs.append(job)
         }
     }
@@ -150,7 +158,9 @@ final class ConversionManager: ObservableObject {
             var finished: [URL] = []
             var failed = 0
             while !cancelRequested, let job = jobs.first(where: { $0.state == .waiting }) {
-                await convert(job, format: format, quality: quality)
+                await convert(
+                    job, format: job.formatOverride ?? format,
+                    quality: job.qualityOverride ?? quality)
                 if job.state == .done, let out = job.output {
                     finished.append(out)
                     batchDone += 1

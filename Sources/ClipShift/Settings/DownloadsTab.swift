@@ -35,31 +35,28 @@ struct DownloadsTab: View {
                 )
             }
 
-            Section("What to download") {
-                Toggle("Audio only", isOn: $s.downloadAudioOnly)
+            Section("Audio downloads") {
+                Hint("Used when \"Audio only\" is ticked next to the link box on the main screen.")
                 Picker("Audio format", selection: $s.downloadAudioFormat) {
                     ForEach(Self.audioFormats, id: \.self) { Text($0).tag($0) }
                 }
-                .disabled(!s.downloadAudioOnly)
                 IntChoiceRow(
                     title: "Audio quality", choices: Self.audioQualities,
                     value: $s.downloadAudioQuality
                 )
-                .disabled(!s.downloadAudioOnly || s.downloadAudioFormat == "best")
+                .disabled(s.downloadAudioFormat == "best")
                 Toggle("Embed cover art", isOn: $s.downloadEmbedCoverArt)
-                    .disabled(!s.downloadAudioOnly)
                 Hint(
                     "Quality 0 is best, 10 is smallest (MP3 and similar). \"best\" keeps the original audio without re-encoding."
                 )
+            }
 
+            Section("Video downloads") {
                 Picker("Video container", selection: $s.downloadVideoContainer) {
                     ForEach(Self.containers, id: \.self) { Text($0).tag($0) }
                 }
-                .disabled(s.downloadAudioOnly)
                 IntChoiceRow(
-                    title: "Max resolution", choices: Self.heights, value: $s.downloadMaxHeight
-                )
-                .disabled(s.downloadAudioOnly)
+                    title: "Max resolution", choices: Self.heights, value: $s.downloadMaxHeight)
             }
 
             Section("Playlists") {
@@ -76,15 +73,12 @@ struct DownloadsTab: View {
                 )
             }
 
-            Section("After downloading") {
-                Toggle("Convert with ClipShift after each download", isOn: $s.downloadThenConvert)
+            Section("Convert after download") {
                 Toggle(
                     "Move the downloaded original to the Trash after converting",
-                    isOn: $s.deleteOriginalAfterConvert
-                )
-                .disabled(!s.downloadThenConvert)
+                    isOn: $s.deleteOriginalAfterConvert)
                 Hint(
-                    "Uses the Format and Quality chosen in the main window, plus your Convert settings. Audio-only downloads are only converted when an audio format is selected. If the output folder is \"same as source\", converted files stay next to the download."
+                    "The \"Convert after download\" checkbox is on the main screen and starts off every time. It uses the Format and Quality shown there when you start the download, plus your Convert settings. If the output folder is \"same as source\", converted files stay next to the download."
                 )
             }
 

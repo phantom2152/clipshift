@@ -10,7 +10,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            urlBar
+            downloadControls
             NoticeBanner()
             if manager.jobs.isEmpty && downloads.jobs.isEmpty {
                 dropZone
@@ -52,6 +52,40 @@ struct ContentView: View {
     }
 
     // MARK: Download bar
+
+    private var downloadControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            urlBar
+            Toggle("Convert after download", isOn: $downloads.convertAfter)
+            if downloads.convertAfter {
+                Text(convertHint)
+                    .font(.caption)
+                    .foregroundStyle(convertHintIsWarning ? Color.orange : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Audio has no picture, so a video format can't be used for an audio-only download.
+    private var convertHintIsWarning: Bool {
+        settings.downloadAudioOnly && manager.format.needsVideo
+    }
+
+    private var convertHint: String {
+        let f = manager.format
+        if convertHintIsWarning {
+            return
+                "Audio only is on, so choose an audio format below (MP3, M4A or WAV) before downloading."
+        }
+        var text = "Will convert to \(f.label)"
+        if f.usesQuality { text += ", \(manager.quality.label)" }
+        text += ". Change the format and quality below before downloading."
+        if settings.deleteOriginalAfterConvert {
+            text +=
+                " Downloaded originals are moved to the Trash afterwards (Settings → Downloads)."
+        }
+        return text
+    }
 
     private var urlBar: some View {
         HStack(spacing: 8) {

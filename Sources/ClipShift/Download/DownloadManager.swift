@@ -6,6 +6,8 @@ final class DownloadManager: ObservableObject {
 
     @Published var jobs: [DownloadJob] = []
     @Published var isRunning = false
+    /// "Convert after download" checkbox. Deliberately not saved: it starts off every launch.
+    @Published var convertAfter = false
     private var cancelRequested = false
     private let sleepGuard = SleepGuard()
 
@@ -18,6 +20,7 @@ final class DownloadManager: ObservableObject {
     func addAndStart(_ text: String) -> Int {
         var valid = 0
         var rejected = 0
+        let cm = ConversionManager.shared
         for token in text.split(whereSeparator: { $0.isWhitespace }).map(String.init) {
             guard let u = URL(string: token), u.host != nil,
                 let scheme = u.scheme?.lowercased(), scheme == "http" || scheme == "https"
@@ -29,7 +32,14 @@ final class DownloadManager: ObservableObject {
             let alreadyQueued = jobs.contains {
                 $0.url == token && ($0.state == .waiting || $0.state.isBusy)
             }
-            if !alreadyQueued { jobs.append(DownloadJob(url: token)) }
+            if !alreadyQueued {
+                let job = DownloadJob(url: token)
+                if convertAfter {
+                    job.convertFormat = cm.format
+                    job.convertQuality = cm.quality
+                }
+                jobs.append(job)
+            }
         }
         if rejected > 0 {
             NoticeCenter.shared.post(
@@ -87,19 +97,14 @@ final class DownloadManager: ObservableObject {
             var failed = 0
             while !cancelRequested, let job = jobs.first(where: { $0.state == .waiting }) {
                 await download(job)
-                if job.state == .done {
-                    finished += job.outputs
-                    handOff(job)
-                }
+                // Files sent on to be converted are announced by the conversion instead.
+                if job.state == .done, !handOff(job) { finished += job.outputs }
                 if case .failed = job.state { failed += 1 }
             }
             isRunning = false
             sleepGuard.end()
 
-            // With "convert after download" on, the conversion announces the result instead.
-            if !s.downloadThenConvert {
-                WorkFinished.announce(finished: finished, failed: failed, verb: "downloaded")
-            }
+            WorkFinished.announce(finished: finished, failed: failed, verb: "downloaded")
         }
     }
 
@@ -197,23 +202,27 @@ final class DownloadManager: ObservableObject {
 
     // MARK: Convert after download
 
-    /// With "convert after download" on, finished files go straight to the convert list.
-    private func handOff(_ job: DownloadJob) {
-        let s = AppSettings.shared
-        guard s.downloadThenConvert, !job.outputs.isEmpty else { return }
-        let cm = ConversionManager.shared
+    /// A link queued with "Convert after download" sends its files to the convert list using
+    /// the format and quality saved when it was queued. Returns true when files were handed over.
+    private func handOff(_ job: DownloadJob) -> Bool {
+        guard let format = job.convertFormat, let quality = job.convertQuality,
+            !job.outputs.isEmpty
+        else { return false }
 
         // Audio has no picture, so turning it into MP4, GIF and the like gives nothing useful.
-        let audioFriendly: [OutputFormat] = [.mp3, .m4a, .wav, .remux]
-        if job.audioOnly && !audioFriendly.contains(cm.format) {
+        if job.audioOnly && format.needsVideo {
             NoticeCenter.shared.post(
-                "Audio download not converted: \(cm.format.label) needs video. Pick an audio format in the main window to convert audio."
+                "Audio download not converted: \(format.label) needs video. Choose an audio format below before downloading."
             )
-            return
+            return false
         }
 
-        cm.addDownloaded(job.outputs, deleteOriginal: s.deleteOriginalAfterConvert)
+        let cm = ConversionManager.shared
+        cm.addDownloaded(
+            job.outputs, deleteOriginal: AppSettings.shared.deleteOriginalAfterConvert,
+            format: format, quality: quality)
         cm.start(retryFailed: false)
+        return true
     }
 
     private static func errorSummary(_ text: String, fallback: String) -> String {

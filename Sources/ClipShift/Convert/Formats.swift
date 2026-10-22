@@ -58,6 +58,9 @@ enum OutputFormat: String, CaseIterable, Identifiable {
         }
     }
 
+    /// True when the output keeps a picture, so an audio-only source makes no sense for it.
+    var needsVideo: Bool { !isAudioOnly && self != .remux }
+
     /// Output-side ffmpeg arguments (everything between `-i input` and the output path).
     /// Values come from Settings and are clamped to ranges ffmpeg accepts.
     @MainActor
