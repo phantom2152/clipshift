@@ -157,9 +157,24 @@ final class ConversionManager: ObservableObject {
         Task {
             var finished: [URL] = []
             var failed = 0
+            var skippedAudio = 0
+            var skippedFormat: OutputFormat?
             while !cancelRequested, let job = jobs.first(where: { $0.state == .waiting }) {
+                let jobFormat = job.formatOverride ?? format
+
+                // An audio file has no picture, so MP4, GIF and the like can't be made from it.
+                // Mark it and move on to the next file without starting ffmpeg.
+                if jobFormat.needsVideo && MediaFilter.isAudio(job.input) {
+                    job.state = .failed(
+                        "Can't convert audio to \(jobFormat.label): there is no video. Choose MP3, M4A, WAV or Remux."
+                    )
+                    skippedAudio += 1
+                    skippedFormat = jobFormat
+                    continue
+                }
+
                 await convert(
-                    job, format: job.formatOverride ?? format,
+                    job, format: jobFormat,
                     quality: job.qualityOverride ?? quality)
                 if job.state == .done, let out = job.output {
                     finished.append(out)
@@ -172,6 +187,12 @@ final class ConversionManager: ObservableObject {
             sleepGuard.end()
             NSApp.dockTile.badgeLabel = nil
             WorkFinished.announce(finished: finished, failed: failed, verb: "converted")
+
+            if skippedAudio > 0, let f = skippedFormat {
+                NoticeCenter.shared.post(
+                    "Skipped \(Fmt.count(skippedAudio, "audio file")): \(f.label) needs video. Choose an audio format to convert them."
+                )
+            }
         }
     }
 
