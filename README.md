@@ -42,3 +42,7 @@ Open **ClipShift > Settings** to configure:
 - Download location, filenames, playlists, and audio-only downloads
 - ffmpeg and yt-dlp paths
 - Notifications, sounds, sleep prevention, and window behavior
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
